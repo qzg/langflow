@@ -5140,6 +5140,9 @@ nv-ingest = [
 postgresql = [
     { name = "sqlalchemy", extra = ["postgresql-psycopg", "postgresql-psycopg2binary"] },
 ]
+wasmcloud = [
+    { name = "nats-py" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -5276,6 +5279,7 @@ requires-dist = [
     { name = "mem0ai", specifier = "==0.1.34" },
     { name = "metal-sdk", specifier = "==2.5.1" },
     { name = "metaphor-python", specifier = "==0.1.23" },
+    { name = "nats-py", marker = "extra == 'wasmcloud'", specifier = ">=2.7.0" },
     { name = "needle-python", specifier = ">=0.4.0" },
     { name = "networkx", specifier = "==3.4.2" },
     { name = "nltk", specifier = "==3.9.1" },
@@ -5324,7 +5328,7 @@ requires-dist = [
     { name = "youtube-transcript-api", specifier = "==0.6.3" },
     { name = "zep-python", specifier = "==2.0.2" },
 ]
-provides-extras = ["docling", "audio", "couchbase", "cassio", "local", "clickhouse-connect", "nv-ingest", "postgresql"]
+provides-extras = ["docling", "audio", "couchbase", "cassio", "local", "clickhouse-connect", "nv-ingest", "postgresql", "wasmcloud"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -5476,6 +5480,9 @@ local = [
 postgresql = [
     { name = "sqlalchemy", extra = ["postgresql-psycopg", "postgresql-psycopg2binary"] },
 ]
+wasmcloud = [
+    { name = "nats-py" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -5563,6 +5570,7 @@ requires-dist = [
     { name = "mcp", specifier = "~=1.10.1" },
     { name = "multiprocess", specifier = ">=0.70.14,<1.0.0" },
     { name = "nanoid", specifier = ">=2.0.0,<3.0.0" },
+    { name = "nats-py", marker = "extra == 'wasmcloud'", specifier = ">=2.7.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0,<2.0.0" },
     { name = "networkx", specifier = ">=3.4.2" },
     { name = "opentelemetry-api", specifier = ">=1.25.0,<2.0.0" },
@@ -5602,7 +5610,7 @@ requires-dist = [
     { name = "wasmtime", specifier = ">=20.0.0,<30.0.0" },
     { name = "webrtcvad", marker = "extra == 'audio'", specifier = ">=2.0.10" },
 ]
-provides-extras = ["audio", "postgresql", "local", "all"]
+provides-extras = ["audio", "postgresql", "local", "all", "wasmcloud"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -6930,6 +6938,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/b7/9d/0250bf5935d88e214
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2e/0d/8630f13998638dc01e187fadd2e5c6d42d127d08aeb4943d231664d6e539/nanoid-2.0.0-py3-none-any.whl", hash = "sha256:90aefa650e328cffb0893bbd4c236cfd44c48bc1f2d0b525ecc53c3187b653bb", size = 5844, upload-time = "2018-11-20T14:45:50.165Z" },
 ]
+
+[[package]]
+name = "nats-py"
+version = "2.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/be/757c8af63596453daaa42cc21be51aa42fc6b23cc9d4347784f99c8357b5/nats_py-2.11.0.tar.gz", hash = "sha256:fb1097db8b520bb4c8f5ad51340ca54d9fa54dbfc4ecc81c3625ef80994b6100", size = 114186, upload-time = "2025-07-22T08:41:08.589Z" }
 
 [[package]]
 name = "needle-python"

@@ -52,6 +52,16 @@ def test_build_predicate_empty_bool_returns_none():
     assert pred is None
 
 
+def test_build_predicate_exists_and_must_not():
+    bool_node = {
+        "filter": [{"exists": {"field": "author"}}],
+        "must_not": [{"exists": {"field": "deleted_at"}}],
+    }
+    pred = build_predicate_from_bool(bool_node)
+    assert "EXISTS(author)" in (pred or "")
+    assert "NOT (EXISTS(deleted_at))" in (pred or "")
+
+
 def test_extract_knn_with_defaults():
     body = {"knn": {"query_vector": [0.1, 0.2, 0.3], "k": 5}}
     field, vector, k = extract_knn(body)  # type: ignore[misc]

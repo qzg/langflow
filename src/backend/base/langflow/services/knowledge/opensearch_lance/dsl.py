@@ -33,10 +33,14 @@ def _range_expr(field: str, ranges: Dict[str, Any]) -> List[str]:
 
 
 def _match_expr(field: str, value: Any) -> str:
-    """Very rough match semantics: treat as exact for now.
-    Future: normalize/lowercase or use LIKE.
+    """Basic match semantics mapped to exact equality for now.
+    Caller may choose to pre-normalize text at ingestion time.
     """
     return _term_expr(field, value)
+
+
+def _exists_expr(field: str) -> str:
+    return f"EXISTS({_normalize_field(field)})"
 
 
 def build_predicate_from_bool(bool_node: Dict[str, Any]) -> Optional[str]:
@@ -60,6 +64,10 @@ def build_predicate_from_bool(bool_node: Dict[str, Any]) -> Optional[str]:
             if "term" in item:
                 field, val = next(iter(item["term"].items()))
                 parts.append(_term_expr(field, val))
+            elif "exists" in item:
+                fld = item["exists"].get("field") if isinstance(item["exists"], dict) else item["exists"].get("field")
+                if fld:
+                    parts.append(_exists_expr(str(fld)))
             elif "terms" in item:
                 field, vals = next(iter(item["terms"].items()))
                 term_parts = [_term_expr(field, v) for v in vals]
@@ -75,6 +83,12 @@ def build_predicate_from_bool(bool_node: Dict[str, Any]) -> Optional[str]:
     must_expr = handle_clause(bool_node.get("must"), "AND")
     filter_expr = handle_clause(bool_node.get("filter"), "AND")
     should_expr = handle_clause(bool_node.get("should"), "OR")
+    # limited must_not support: exists only
+    must_not_expr = None
+    if bool_node.get("must_not"):
+        mn = handle_clause(bool_node.get("must_not"), "OR")
+        if mn:
+            must_not_expr = f"NOT ({mn})"
 
     if must_expr:
         clauses.append(must_expr)
@@ -83,6 +97,8 @@ def build_predicate_from_bool(bool_node: Dict[str, Any]) -> Optional[str]:
     if should_expr:
         clauses.append("(" + should_expr + ")")
 
+    if must_not_expr:
+        clauses.append(must_not_expr)
     if not clauses:
         return None
     return " AND ".join([c for c in clauses if c])

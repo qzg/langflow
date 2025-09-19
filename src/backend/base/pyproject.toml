@@ -255,6 +255,9 @@ all = [
     "sentence-transformers>=2.0.0",
     "ctransformers>=0.2"
 ]
+wasmcloud = [
+    "nats-py>=2.7.0"
+]
 
 [project.scripts]
 langflow-base = "langflow.__main__:main"

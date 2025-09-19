@@ -23,13 +23,22 @@ class LanceDBOpenSearchClient(OpenSearchCompatClient):
         if lancedb is None:
             raise RuntimeError("lancedb is not installed. Please install lancedb to use LanceDBOpenSearchClient.")
         self._db = lancedb.connect(path)
+        self._schemas: dict[str, Dict[str, Any]] = {}
 
     # ----- Index management -----
     def put_index(self, index: str, *, schema: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        # Default schema contract
+        default_schema = {
+            "id": "string",
+            "vector": "list<float>",
+            "text": "string",
+            "metadata": "object",
+        }
+        self._schemas[index] = schema or default_schema
         # Create table if missing; assume schema with at least id, vector, metadata
         if index not in self._db.table_names():
             self._db.create_table(index, data=[], mode="create")
-        return {"acknowledged": True, "index": index}
+        return {"acknowledged": True, "index": index, "schema": self._schemas[index]}
 
     def delete_index(self, index: str) -> Dict[str, Any]:
         if index in self._db.table_names():

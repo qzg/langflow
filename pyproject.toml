@@ -245,6 +245,10 @@ postgresql = [
     "sqlalchemy[postgresql_psycopg]>=2.0.38,<3.0.0",
 ]
 
+wasmcloud = [
+    "nats-py>=2.7.0"
+]
+
 [tool.uv]
 override-dependencies = [
     # temporary force a newer python-pptx
