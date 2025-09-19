@@ -220,6 +220,18 @@ class Settings(BaseSettings):
 
     # Telemetry
     do_not_track: bool = False
+
+    # wasmCloud / lattice configuration
+    wasmcloud_enabled: bool = False
+    """Enable wasmCloud integration (remote lattice execution via wRPC)."""
+    wasmcloud_nats_url: str = "nats://127.0.0.1:4222"
+    """NATS URL for the lattice message bus."""
+    wasmcloud_lattice: str = "default"
+    """Lattice namespace to target for component invocations."""
+    wasmcloud_timeout_ms: int = 30000
+    """Default request timeout for wRPC calls over NATS (milliseconds)."""
+    wasmcloud_creds_path: str | None = None
+    """Optional NATS creds file for secure local/dev environments."""
     """If set to True, Langflow will not track telemetry."""
     telemetry_base_url: str = "https://langflow.gateway.scarf.sh"
     transactions_storage_enabled: bool = True

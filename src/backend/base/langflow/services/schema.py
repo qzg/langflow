@@ -20,4 +20,5 @@ class ServiceType(str, Enum):
     TELEMETRY_SERVICE = "telemetry_service"
     JOB_QUEUE_SERVICE = "job_queue_service"
     WASM_SERVICE = "wasm_service"
+    WASMCLOUD_SERVICE = "wasmcloud_service"
     MCP_COMPOSER_SERVICE = "mcp_composer_service"

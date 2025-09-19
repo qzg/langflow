@@ -249,3 +249,10 @@ def get_wasm_service() -> WasmService:
     from langflow.services.wasm.factory import WasmServiceFactory
 
     return get_service(ServiceType.WASM_SERVICE, WasmServiceFactory())
+
+
+def get_wasmcloud_service():
+    """Retrieve the WasmCloudService instance from the service manager."""
+    from langflow.services.wasmcloud.factory import WasmCloudServiceFactory
+
+    return get_service(ServiceType.WASMCLOUD_SERVICE, WasmCloudServiceFactory())
