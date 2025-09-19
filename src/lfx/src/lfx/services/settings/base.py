@@ -200,6 +200,12 @@ class Settings(BaseSettings):
     backend_only: bool = False
     """If set to True, Langflow will not serve the frontend."""
 
+    # Knowledge backend (OpenSearch-compatible)
+    knowledge_backend: str = "lancedb"
+    """Which Knowledge backend to use (e.g., 'lancedb', 'opensearch')."""
+    knowledge_lancedb_path: str = "./data/lancedb"
+    """Filesystem path for LanceDB storage when using the LanceDB backend."""
+
     # CORS Settings
     cors_origins: list[str] | str = "*"
     """Allowed origins for CORS. Can be a list of origins or '*' for all origins.
