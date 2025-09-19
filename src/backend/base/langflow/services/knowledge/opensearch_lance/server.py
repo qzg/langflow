@@ -84,5 +84,4 @@ def create_app() -> FastAPI:
     return app
 
 
-# Allow `uvicorn langflow.services.knowledge.opensearch_lance.server:create_app` to run.
-app = create_app()
+# To run: `uvicorn langflow.services.knowledge.opensearch_lance.server:create_app --factory`
