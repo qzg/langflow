@@ -78,7 +78,7 @@ class _FakeDB:
     def table_names(self):
         return list(self._tables.keys())
 
-    def create_table(self, name, _data=None, _mode=None):
+    def create_table(self, name, data=None, mode=None):  # noqa: ARG002
         self._tables[name] = _FakeTable()
 
     def drop_table(self, name):
@@ -98,7 +98,7 @@ class _FakeLanceModule(types.ModuleType):
 
 
 @pytest.fixture(autouse=True)
-def fake_lancedb(_monkeypatch):
+def fake_lancedb(monkeypatch):  # noqa: ARG001
     mod = _FakeLanceModule()
     sys.modules["lancedb"] = mod
     # Also patch adapter module-level reference if already imported
