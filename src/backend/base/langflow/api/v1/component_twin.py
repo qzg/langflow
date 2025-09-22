@@ -6,7 +6,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, col, select
+from sqlalchemy import and_
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from langflow.api.utils import CurrentActiveUser, DbSession
@@ -96,12 +97,12 @@ async def get_component_twin(
 async def list_component_twins(
     current_user: CurrentActiveUser,
     session: DbSession,
-    flow_id: Annotated[UUID | None, Query(default=None)],
-    component_id: Annotated[str | None, Query(default=None)],
-    python_hash: Annotated[str | None, Query(default=None)],
-    build_status: Annotated[str | None, Query(default=None)],
-    limit: Annotated[int, Query(default=100, ge=1, le=500)],
-    offset: Annotated[int, Query(default=0, ge=0)],
+    flow_id: Annotated[UUID | None, Query()] = None,
+    component_id: Annotated[str | None, Query()] = None,
+    python_hash: Annotated[str | None, Query()] = None,
+    build_status: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ComponentTwin]:
     # Build filters
     filt = []

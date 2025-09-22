@@ -111,6 +111,10 @@ async def test_knowledge_ingest_and_retrieve_with_lancedb(tmp_path, monkeypatch)
     monkeypatch.setattr(ing_mod, "get_settings_service", lambda: _SettingsService())
     monkeypatch.setattr(ret_mod, "get_settings_service", lambda: _SettingsService())
 
+    # Avoid decrypting API key during test (no auth settings needed)
+    monkeypatch.setattr(ing_mod, "decrypt_api_key", lambda *_args, **_kwargs: None, raising=False)
+    monkeypatch.setattr(ret_mod, "decrypt_api_key", lambda *_args, **_kwargs: None, raising=False)
+
     # Also patch their module-level KB root constants (in case they were computed at import time)
     monkeypatch.setattr(ing_mod, "KNOWLEDGE_BASES_ROOT_PATH", kb_root, raising=False)
     monkeypatch.setattr(ret_mod, "KNOWLEDGE_BASES_ROOT_PATH", kb_root, raising=False)
@@ -200,8 +204,26 @@ async def test_knowledge_ingest_and_retrieve_with_lancedb(tmp_path, monkeypatch)
 
     df = await retrieve.retrieve_data()
 
-    # 9) Assert we got results with content
-    assert getattr(df, "data", None), "Expected DataFrame-like result with data"
-    rows = df.data  # DataFrame stores a list of Data objects
-    assert len(rows) >= 1
-    assert any(getattr(r, "content", "") for r in rows)
+    # 9) Assert we got results with content (support both lfx.DataFrame and pandas.DataFrame)
+    if hasattr(df, "data") and df.data is not None:
+        rows = df.data  # lfx DataFrame stores a list of Data objects
+        assert len(rows) >= 1
+        assert any(getattr(r, "content", "") for r in rows)
+    else:
+        # Fallback: assume pandas-like DataFrame
+        # Check row count and that a 'content' column has non-empty values
+        row_count = 0
+        try:
+            row_count = df.shape[0]  # type: ignore[attr-defined]
+        except Exception:
+            try:
+                row_count = len(df)  # type: ignore[arg-type]
+            except Exception:
+                row_count = 0
+        assert row_count >= 1, "Expected at least one retrieved row"
+        content_nonempty = False
+        from contextlib import suppress
+
+        with suppress(Exception):
+            content_nonempty = any(bool(str(x)) for x in df["content"])  # type: ignore[index]
+        assert content_nonempty, "Expected non-empty 'content' values in results"
