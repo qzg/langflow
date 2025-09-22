@@ -12,6 +12,7 @@ import { usePostTemplateValue } from "@/controllers/API/queries/nodes/use-post-t
 import { usePostRetrieveVertexOrder } from "@/controllers/API/queries/vertex";
 import { customOpenNewTab } from "@/customization/utils/custom-open-new-tab";
 import useAddFlow from "@/hooks/flows/use-add-flow";
+import UiBuilderModal from "@/modals/uiBuilderModal";
 import type { APIClassType } from "@/types/api";
 import IconComponent from "../../../../components/common/genericIconComponent";
 import {
@@ -75,6 +76,7 @@ const NodeToolbarComponent = memo(
     const shortcuts = useShortcutsStore((state) => state.shortcuts);
     const currentFlowId = useFlowsManagerStore((state) => state.currentFlowId);
     const [openModal, setOpenModal] = useState(false);
+    const [openUiBuilder, setOpenUiBuilder] = useState(false);
     const frozen = data.node?.frozen ?? false;
     const updateNodeInternals = useUpdateNodeInternals();
 
@@ -129,6 +131,17 @@ const NodeToolbarComponent = memo(
     const hasOnlyOneOutput = data.node?.outputs?.length === 1;
 
     const isMinimal = hasSelectOutput || hasOnlyOneOutput;
+
+    const isUIBuilderNode = useMemo(() => {
+      const name = data.node?.display_name || data.type;
+      if (!name) return false;
+      const lowered = String(name).toLowerCase();
+      return (
+        lowered === "ui builder" ||
+        lowered === "uibuilder" ||
+        data.type === "UIBuilder"
+      );
+    }, [data.node?.display_name, data.type]);
 
     const [toolMode, setToolMode] = useState(
       () =>
@@ -435,6 +448,14 @@ const NodeToolbarComponent = memo(
     const renderToolbarButtons = useMemo(
       () => (
         <>
+          {isUIBuilderNode && (
+            <ToolbarButton
+              icon="Wrench"
+              label="Edit UI"
+              onClick={() => setOpenUiBuilder(true)}
+              dataTestId="ui-builder-edit-ui"
+            />
+          )}
           {hasCode && (
             <ToolbarButton
               className={isCustomComponent ? "animate-pulse-pink" : ""}
@@ -527,6 +548,7 @@ const NodeToolbarComponent = memo(
         </>
       ),
       [
+        isUIBuilderNode,
         hasCode,
         nodeLength,
         hasToolMode,
@@ -748,6 +770,15 @@ const NodeToolbarComponent = memo(
             addFlow={addFlow}
             name={name}
           />
+
+          {isUIBuilderNode && (
+            <UiBuilderModal
+              open={openUiBuilder}
+              setOpen={setOpenUiBuilder}
+              nodeId={data.id}
+              nodeName={data.node?.display_name}
+            />
+          )}
         </div>
       </>
     );
