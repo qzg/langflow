@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+import os
 
 from .client import OpenSearchCompatClient
 from .opensearch_lance.adapter import LanceDBOpenSearchClient
@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover
     get_settings_service = None  # type: ignore
 
 
-def create_knowledge_client(settings: Optional[object] = None) -> OpenSearchCompatClient:
+def create_knowledge_client(settings: object | None = None) -> OpenSearchCompatClient:
     """Create a Knowledge backend client based on settings.
 
     This factory prefers a provided settings object (with attributes
@@ -29,6 +29,13 @@ def create_knowledge_client(settings: Optional[object] = None) -> OpenSearchComp
 
     if backend == "lancedb":
         path = getattr(settings, "knowledge_lancedb_path", "./data/lancedb")
+        # Ensure the storage directory exists for LanceDB
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as exc:
+            # If directory creation fails, LanceDB may still handle path creation; proceed but log
+            # We intentionally don't raise to keep the service usable in read-only contexts
+            print(f"[knowledge] Could not ensure LanceDB path {path}: {exc}")
         return LanceDBOpenSearchClient(path=path)
 
     if backend == "opensearch":  # future backend

@@ -39,6 +39,17 @@ class BulkDeleteRequest(BaseModel):
     kb_names: list[str]
 
 
+class KnowledgeBaseDocument(BaseModel):
+    id: str
+    document: str
+    metadata: dict | None = None
+
+
+class KnowledgeBaseDocumentsResponse(BaseModel):
+    total: int
+    items: list[KnowledgeBaseDocument]
+
+
 def get_kb_root_path() -> Path:
     """Get the knowledge bases root path."""
     return KNOWLEDGE_BASES_DIR
@@ -442,3 +453,61 @@ async def delete_knowledge_bases_bulk(request: BulkDeleteRequest, current_user: 
         raise HTTPException(status_code=500, detail=f"Error deleting knowledge bases: {e!s}") from e
     else:
         return result
+
+
+@router.get("/{kb_name}/documents", status_code=HTTPStatus.OK)
+async def list_knowledge_base_documents(
+    kb_name: str,
+    current_user: CurrentActiveUser,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """List documents for a specific knowledge base with basic pagination."""
+    try:
+        kb_root_path = get_kb_root_path()
+        kb_user = current_user.username
+        kb_path = kb_root_path / kb_user / kb_name
+
+        if not kb_path.exists() or not kb_path.is_dir():
+            raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+
+        # Load Chroma collection
+        chroma = Chroma(
+            persist_directory=str(kb_path),
+            collection_name=kb_path.name,
+        )
+        collection = chroma._collection
+
+        # Fetch all items; slice in memory for pagination
+        results = collection.get(include=["ids", "documents", "metadatas"])
+        ids = results.get("ids") or []
+        documents = results.get("documents") or []
+        metadatas = results.get("metadatas") or []
+
+        total = len(ids)
+
+        # Normalize bounds
+        offset = max(offset, 0)
+        limit = max(limit, 0)
+        end = min(offset + limit, total)
+
+        items: list[dict] = []
+        for i in range(offset, end):
+            meta = metadatas[i] if i < len(metadatas) else None
+            items.append(
+                {
+                    "id": ids[i],
+                    "document": documents[i],
+                    "metadata": meta,
+                }
+            )
+
+        return {"total": total, "items": items}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting knowledge base documents for '{kb_name}': {e!s}",
+        ) from e

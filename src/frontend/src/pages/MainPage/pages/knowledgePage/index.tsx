@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ForwardedIconComponent from "@/components/common/genericIconComponent";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { KnowledgeBaseInfo } from "@/controllers/API/queries/knowledge-bases/use-get-knowledge-bases";
+import KnowledgeBaseContentModal from "../filesPage/components/KnowledgeBaseContentModal";
 import KnowledgeBaseDrawer from "../filesPage/components/KnowledgeBaseDrawer";
 import KnowledgeBasesTab from "../filesPage/components/KnowledgeBasesTab";
 
@@ -15,6 +16,7 @@ export const KnowledgePage = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedKnowledgeBase, setSelectedKnowledgeBase] =
     useState<KnowledgeBaseInfo | null>(null);
+  const [isContentModalOpen, setIsContentModalOpen] = useState(false);
 
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -68,10 +70,9 @@ export const KnowledgePage = () => {
   const handleKnowledgeBaseSelect = (knowledgeBase: KnowledgeBaseInfo) => {
     if (isDrawerOpen) {
       closeDrawer();
-    } else {
-      setSelectedKnowledgeBase(knowledgeBase);
-      // setIsDrawerOpen(true);
     }
+    setSelectedKnowledgeBase(knowledgeBase);
+    setIsContentModalOpen(true);
   };
 
   const closeDrawer = () => {
@@ -136,6 +137,14 @@ export const KnowledgePage = () => {
           />
         </div>
       )}
+      <KnowledgeBaseContentModal
+        open={isContentModalOpen}
+        onOpenChange={(open) => {
+          setIsContentModalOpen(open);
+          if (!open) setSelectedKnowledgeBase(null);
+        }}
+        knowledgeBase={selectedKnowledgeBase}
+      />
     </div>
   );
 };

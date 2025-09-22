@@ -266,6 +266,8 @@ src/backend/base/langflow/frontend/
 scratchpad*
 chroma*/*
 stuff/*
+# Local data directory (auto-created at runtime)
+data/
 src/frontend/playwright-report/index.html
 *.bak
 prof/*
