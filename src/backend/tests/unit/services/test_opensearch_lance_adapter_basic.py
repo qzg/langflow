@@ -1,8 +1,8 @@
+import re
 import sys
 import types
 
 import pytest
-
 from langflow.services.knowledge.opensearch_lance.adapter import LanceDBOpenSearchClient
 
 
@@ -20,18 +20,34 @@ class _FakeQuery:
         self._limit = n
         return self
 
+    def _to_python_expr(self, pred: str) -> str:
+        # Translate simple predicate language to a Python expression using row dict
+        expr = pred
+        expr = expr.replace(" AND ", " and ").replace(" OR ", " or ")
+        # EXISTS(field) -> (row.get('field') is not None)
+        expr = re.sub(r"EXISTS\(([^)]+)\)", r"(row.get('\1') is not None)", expr)
+        # field == 'value'
+        expr = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\s*==\s*'([^']*)'", r"(row.get('\1') == '\2')", expr)
+        # numeric comparisons
+        expr = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\s*>=\s*([0-9]+(?:\.[0-9]+)?)", r"(row.get('\1', 0) >= \2)", expr)
+        expr = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\s*>\s*([0-9]+(?:\.[0-9]+)?)", r"(row.get('\1', 0) > \2)", expr)
+        expr = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\s*<=\s*([0-9]+(?:\.[0-9]+)?)", r"(row.get('\1', 0) <= \2)", expr)
+        expr = re.sub(r"([A-Za-z_][A-Za-z0-9_]*)\s*<\s*([0-9]+(?:\.[0-9]+)?)", r"(row.get('\1', 0) < \2)", expr)
+        return expr  # noqa: RET504
+
     def to_list(self):
-        # Extremely naive predicate handling: only equality on author and simple range
         rows = list(self.table._rows)
         if self._predicate:
             pred = self._predicate
+            pyexpr = self._to_python_expr(pred)
+
             def keep(row):
-                ok = True
-                if "author == 'alice'" in pred:
-                    ok = ok and row.get("author") == "alice"
-                if "likes >= 10" in pred:
-                    ok = ok and (row.get("likes", 0) >= 10)
-                return ok
+                try:
+                    return bool(eval(pyexpr, {"__builtins__": {}}, {"row": row}))  # noqa: S307
+                except Exception:
+                    # Fallback to keep all rows if predicate can't be evaluated
+                    return True
+
             rows = [r for r in rows if keep(r)]
         if isinstance(self._limit, int):
             rows = rows[: self._limit]
@@ -51,7 +67,7 @@ class _FakeTable:
     def add(self, rows):
         self._rows.extend(rows)
 
-    def search(self, vector):
+    def search(self, _vector):
         return _FakeQuery(self)
 
 
@@ -62,7 +78,7 @@ class _FakeDB:
     def table_names(self):
         return list(self._tables.keys())
 
-    def create_table(self, name, data=None, mode=None):
+    def create_table(self, name, _data=None, _mode=None):
         self._tables[name] = _FakeTable()
 
     def drop_table(self, name):
@@ -77,19 +93,20 @@ class _FakeLanceModule(types.ModuleType):
         super().__init__("lancedb")
         self._db = _FakeDB()
 
-    def connect(self, path):
+    def connect(self, _path):
         return self._db
 
 
 @pytest.fixture(autouse=True)
-def fake_lancedb(monkeypatch):
+def fake_lancedb(_monkeypatch):
     mod = _FakeLanceModule()
     sys.modules["lancedb"] = mod
     # Also patch adapter module-level reference if already imported
     try:
-        import langflow.services.knowledge.opensearch_lance.adapter as adapter
-        adapter.lancedb = mod  # type: ignore
-    except Exception:
+        from langflow.services.knowledge.opensearch_lance import adapter
+
+        adapter.lancedb = mod  # type: ignore[attr-defined]
+    except Exception:  # noqa: S110
         pass
     yield
     sys.modules.pop("lancedb", None)
@@ -120,3 +137,43 @@ def test_adapter_put_upsert_search_basic(tmp_path):
     hits = out["hits"]["hits"]
     assert len(hits) == 1
     assert hits[0]["_source"]["author"] == "alice"
+
+
+def test_adapter_delete_index_and_search_empty(tmp_path):
+    client = LanceDBOpenSearchClient(path=str(tmp_path))
+    client.put_index("kb")
+    # upsert then delete index
+    client.upsert_doc("kb", doc_id="1", body={"id": "1", "vector": [0.0], "metadata": {"author": "alice"}})
+    del_res = client.delete_index("kb")
+    assert del_res.get("acknowledged")
+    # searching after delete should return zero hits (fresh empty table)
+    body = {"size": 5, "knn": {"query_vector": [0.0], "k": 5}, "query": {"bool": {}}}
+    out = client.search("kb", body=body)
+    assert out["hits"]["total"]["value"] == 0
+
+
+def test_adapter_search_should_terms_range(tmp_path):
+    client = LanceDBOpenSearchClient(path=str(tmp_path))
+    client.put_index("kb")
+    # two categories, ensure OR works, and range filter limits to likes >= 10
+    client.upsert_doc("kb", doc_id="1", body={"id": "1", "vector": [0.0], "metadata": {"category": "news", "likes": 5}})
+    client.upsert_doc(
+        "kb", doc_id="2", body={"id": "2", "vector": [0.0], "metadata": {"category": "blog", "likes": 15}}
+    )
+    client.upsert_doc(
+        "kb", doc_id="3", body={"id": "3", "vector": [0.0], "metadata": {"category": "other", "likes": 20}}
+    )
+    body = {
+        "size": 10,
+        "knn": {"query_vector": [0.0], "k": 10},
+        "query": {
+            "bool": {
+                "should": [{"term": {"category": "news"}}, {"term": {"category": "blog"}}],
+                "filter": [{"range": {"likes": {"gte": 10}}}],
+            }
+        },
+    }
+    out = client.search("kb", body=body)
+    hits = out["hits"]["hits"]
+    assert len(hits) == 1
+    assert hits[0]["_source"]["category"] == "blog"
