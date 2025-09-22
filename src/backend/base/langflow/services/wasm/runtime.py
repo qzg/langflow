@@ -57,21 +57,35 @@ class WasmRuntime:
             raise WasmRuntimeError("Wasmtime is not available or failed to initialize") from self._init_error
 
     def instantiate_component(self, path: str) -> WasmInstance:
-        """Load and instantiate a component-model .wasm from file path.
+        """Load and instantiate a .wasm from file path.
 
-        Returns a WasmInstance containing the store and instance; callers can
-        use call_export to invoke exported functions.
+        Prefers component-model instantiation. If that fails, falls back to
+        classic module instantiation. Returns a WasmInstance containing the
+        store and instance; callers can use call_export to invoke exported
+        functions.
         """
         self.ensure_available()
         assert self._wasmtime is not None and self._engine is not None  # for type checkers
         wasmtime = self._wasmtime
         engine = self._engine
 
-        component = wasmtime.Component.from_file(engine, path)
-        linker = wasmtime.Linker(engine)
-        store = wasmtime.Store(engine)
-        instance = linker.instantiate(store, component)
-        return WasmInstance(store=store, instance=instance)
+        # Try component-model first
+        try:
+            component = wasmtime.Component.from_file(engine, path)
+            linker = wasmtime.Linker(engine)
+            store = wasmtime.Store(engine)
+            instance = linker.instantiate(store, component)
+            return WasmInstance(store=store, instance=instance)
+        except Exception:
+            # Fallback to classic module
+            try:
+                module = wasmtime.Module.from_file(engine, path)
+                linker = wasmtime.Linker(engine)
+                store = wasmtime.Store(engine)
+                instance = linker.instantiate(store, module)
+                return WasmInstance(store=store, instance=instance)
+            except Exception as exc:
+                raise WasmRuntimeError(f"Failed to instantiate wasm file '{path}': {exc}") from exc
 
     def call_export(self, wasm: WasmInstance, export: str, *args: Any) -> Any:
         """Call an exported function by name.
@@ -81,7 +95,7 @@ class WasmRuntime:
         """
         try:
             exports = wasm.instance.exports(wasm.store)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise WasmRuntimeError("Failed to fetch exports from instance") from exc
 
         func = None
@@ -103,5 +117,5 @@ class WasmRuntime:
 
         try:
             return func(*args)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise WasmRuntimeError(f"Error calling export '{export}': {exc}") from exc

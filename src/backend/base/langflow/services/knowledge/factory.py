@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from lfx.log.logger import logger
+
 from .client import OpenSearchCompatClient
 from .opensearch_lance.adapter import LanceDBOpenSearchClient
 
@@ -35,7 +37,7 @@ def create_knowledge_client(settings: object | None = None) -> OpenSearchCompatC
         except OSError as exc:
             # If directory creation fails, LanceDB may still handle path creation; proceed but log
             # We intentionally don't raise to keep the service usable in read-only contexts
-            print(f"[knowledge] Could not ensure LanceDB path {path}: {exc}")
+            logger.warning(f"Could not ensure LanceDB path {path}: {exc}")
         return LanceDBOpenSearchClient(path=path)
 
     if backend == "opensearch":  # future backend

@@ -9,8 +9,9 @@ from langchain_chroma import Chroma
 from lfx.log import logger
 from pydantic import BaseModel
 
-from langflow.api.utils import CurrentActiveUser
+from langflow.services.knowledge.factory import create_knowledge_client
 from langflow.services.deps import get_settings_service
+from langflow.services.knowledge.factory import create_knowledge_client
 
 router = APIRouter(tags=["Knowledge Bases"], prefix="/knowledge_bases")
 
@@ -462,46 +463,37 @@ async def list_knowledge_base_documents(
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """List documents for a specific knowledge base with basic pagination."""
+    """List documents for a specific knowledge base with basic pagination using LanceDB-backed OpenSearch client."""
     try:
-        kb_root_path = get_kb_root_path()
-        kb_user = current_user.username
-        kb_path = kb_root_path / kb_user / kb_name
+        # Mark current_user as used (multi-tenant setups might scope index names by user)
+        logger.debug("Listing documents for KB '%s' (user=%s)", kb_name, getattr(current_user, "username", "?"))
 
-        if not kb_path.exists() or not kb_path.is_dir():
-            raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+        # Use LanceDB OpenSearch-compatible client (path and backend selected by settings)
+        client = create_knowledge_client()
 
-        # Load Chroma collection
-        chroma = Chroma(
-            persist_directory=str(kb_path),
-            collection_name=kb_path.name,
-        )
-        collection = chroma._collection
-
-        # Fetch all items; slice in memory for pagination
-        results = collection.get(include=["ids", "documents", "metadatas"])
-        ids = results.get("ids") or []
-        documents = results.get("documents") or []
-        metadatas = results.get("metadatas") or []
-
-        total = len(ids)
-
-        # Normalize bounds
-        offset = max(offset, 0)
-        limit = max(limit, 0)
-        end = min(offset + limit, total)
+        # Build OpenSearch search body for simple listing (no vector search)
+        body = {
+            "size": int(max(limit, 0)),
+            "from": int(max(offset, 0)),
+            "query": {"bool": {}},
+        }
+        result = client.search(kb_name, body=body)
+        hits = (result or {}).get("hits", {}).get("hits", [])
 
         items: list[dict] = []
-        for i in range(offset, end):
-            meta = metadatas[i] if i < len(metadatas) else None
+        for h in hits:
+            src = h.get("_source", {}) or {}
+            # Prefer common text fields
+            document_text = src.get("text") or src.get("document") or src.get("content") or ""
             items.append(
                 {
-                    "id": ids[i],
-                    "document": documents[i],
-                    "metadata": meta,
+                    "id": h.get("_id") or src.get("id") or "",
+                    "document": document_text,
+                    "metadata": {k: v for k, v in src.items() if k not in {"text", "document", "content"}},
                 }
             )
 
+        total = (result or {}).get("hits", {}).get("total", {}).get("value", len(items))
         return {"total": total, "items": items}
 
     except HTTPException:
