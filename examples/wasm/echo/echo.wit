@@ -1,5 +1,5 @@
-package demo:echo
+package demo:echo;
 
 world echo {
-  process: func(input: string) -> string
+  export process: func(input: string) -> string;
 }

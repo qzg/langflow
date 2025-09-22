@@ -10,15 +10,17 @@ Prereqs
 
 1) Start a local lattice (non-destructive)
 - wash up
-- Check status: wash ctl get hosts/providers/components
+- Check status:
+  - wash get hosts
+  - wash get inventory <HOST_ID>  # shows components/providers on a host
 
 2) Configure Langflow
 Add to .env (or set via upcoming Settings UI):
-- WASMCLOUD_ENABLED=true
-- WASMCLOUD_NATS_URL=nats://127.0.0.1:4222
-- WASMCLOUD_LATTICE=default
-- WASMCLOUD_TIMEOUT_MS=30000
-- WASMCLOUD_CREDS_PATH=</path/to/nats.creds> (optional)
+- LANGFLOW_WASMCLOUD_ENABLED=true
+- LANGFLOW_WASMCLOUD_NATS_URL=nats://127.0.0.1:4222
+- LANGFLOW_WASMCLOUD_LATTICE=default
+- LANGFLOW_WASMCLOUD_TIMEOUT_MS=30000
+- LANGFLOW_WASMCLOUD_CREDS_PATH=</path/to/nats.creds> (optional)
 
 3) Build an example component (echo)
 - See examples/wasm/echo/ for a minimal WIT world and Rust crate scaffold.

@@ -41,7 +41,7 @@ class WasmCloudService(Service):
         """Return True if optional deps import and a connection has been attempted."""
         try:
             import nats  # noqa: F401
-        except Exception:
+        except ImportError:
             return False
         return True
 
@@ -54,10 +54,9 @@ class WasmCloudService(Service):
             return
         try:
             import nats
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(
-                "nats-py is not installed. Install 'nats-py' to use wasmCloud integration."
-            ) from exc
+        except ImportError as exc:
+            msg = "nats-py is not installed. Install 'nats-py' to use wasmCloud integration."
+            raise RuntimeError(msg) from exc
 
         connect_kwargs: dict[str, Any] = {"servers": self._nats_url}
         if self._creds_path:
@@ -74,20 +73,25 @@ class WasmCloudService(Service):
                 self._nc = None
                 self._connected = False
 
-    async def call_component(self, component_id: str, operation: str, payload: bytes) -> bytes:
+    async def call_component(
+        self, component_id: str, operation: str, payload: bytes, timeout_ms: int | None = None
+    ) -> bytes:
         """Call a component operation over wRPC via NATS.
 
         Note: This is a placeholder API surface; the wRPC subject and framing
         will be refined in subsequent iterations.
         """
         if not self._enabled:
-            raise RuntimeError("wasmCloud integration is disabled (wasmcloud_enabled=False)")
+            msg = "wasmCloud integration is disabled (wasmcloud_enabled=False)"
+            raise RuntimeError(msg)
 
         await self.connect()
         if self._nc is None:
-            raise RuntimeError("NATS connection not available")
+            msg = "NATS connection not available"
+            raise RuntimeError(msg)
 
         # Provisional subject shape; to be aligned with wasmCloud conventions
         subject = f"wrpc.{self._lattice}.{component_id}.{operation}"
-        msg = await self._nc.request(subject, payload, timeout=self._timeout_ms / 1000.0)
+        req_timeout = (timeout_ms if timeout_ms is not None else self._timeout_ms) / 1000.0
+        msg = await self._nc.request(subject, payload, timeout=req_timeout)
         return msg.data
