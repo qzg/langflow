@@ -178,6 +178,12 @@ tests: ## run unit, integration, coverage tests
 	@echo 'Running Coverage Tests...'
 	make coverage
 
+wasm_m0_dry_run: ## run minimal WASM M0 pipeline (planner, publish dry-run, parity) via unit tests
+	@uv run pytest \
+		src/backend/tests/unit/services/wasm/test_build_planning.py \
+		src/backend/tests/unit/api/v1/test_wasm_publish_dry_run.py \
+		src/backend/tests/unit/api/v1/test_wasm_parity_stub.py -q
+
 ######################
 # TEMPLATE TESTING
 ######################

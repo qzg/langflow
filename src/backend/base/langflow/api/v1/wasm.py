@@ -65,6 +65,8 @@ class PublishResponse(BaseModel):
     planned_args: list[str] | None = None
     success: bool
     error: str | None = None
+    digest: str | None = None
+    size: int | None = None
 
 
 class ParityRequest(BaseModel):
@@ -249,11 +251,31 @@ async def publish_twin(
     from pathlib import Path
 
     plan, result = publish_oci(wasm_path=Path(twin.wasm_blob), oci_ref=payload.oci_ref, dry_run=payload.dry_run)
+
+    # Persist artifact metadata when publish (even dry-run) for traceability
+    manifest = twin.capability_manifest or {}
+    manifest_art = manifest.get("artifact", {})
+    manifest_art.update(
+        {
+            "oci_ref": payload.oci_ref,
+            "sha256": result.digest,
+            "size": result.size,
+        }
+    )
+    manifest["artifact"] = manifest_art
+    twin.capability_manifest = manifest
+    twin.updated_at = datetime.now(timezone.utc)
+    session.add(twin)
+    await session.commit()
+    await session.refresh(twin)
+
     return PublishResponse(
         planned_tool=plan.tool or None,
         planned_args=plan.args or None,
         success=result.success,
         error=result.error,
+        digest=result.digest,
+        size=result.size,
     )
 
 
