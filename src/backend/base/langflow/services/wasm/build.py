@@ -15,6 +15,12 @@ class BuildPlan:
 
 
 @dataclass
+class BuildCommandPlan:
+    tool: str
+    args: list[str]
+
+
+@dataclass
 class BuildResult:
     built: bool
     wasm_path: Path | None
@@ -42,33 +48,46 @@ def plan_build(*, wit_source: str, rust_source: str | None) -> BuildPlan:
     return BuildPlan(workspace=tmpdir, files=files)
 
 
+def plan_build_command() -> BuildCommandPlan:
+    """Return the preferred build command plan for producing a Wasm artifact.
+
+    Preference order (M0):
+    1) cargo component build --release (if cargo and cargo-component are on PATH)
+    2) cargo build --release --target wasm32-wasip2 (fallback aligned with Component Model)
+    If neither is available, returns tool="" and args=[].
+    """
+    import shutil
+
+    cargo = shutil.which("cargo")
+    cargo_component_bin = shutil.which("cargo-component")
+    if cargo and cargo_component_bin:
+        return BuildCommandPlan(tool=cargo, args=["component", "build", "--release"])  # uses cargo subcommand
+    if cargo:
+        return BuildCommandPlan(tool=cargo, args=["build", "--release", "--target", "wasm32-wasip2"])  # fallback
+    return BuildCommandPlan(tool="", args=[])
+
+
 def build_component(*, wit_source: str, rust_source: str | None, dry_run: bool = False) -> BuildResult:
     plan = plan_build(wit_source=wit_source, rust_source=rust_source)
     if dry_run:
         return BuildResult(built=False, wasm_path=None, logs_path=None, error=None)
 
-    # Attempt to run cargo build; capture logs
+    # Attempt to run the planned build; capture logs
     logs_path = plan.workspace / "build.log"
     wasm_out: Path | None = None
     try:
         import subprocess
 
         with logs_path.open("w") as log:
-            # Allow component model toolchains to be configured later. For M0, try a wasi target.
-            import shutil
-
-            cargo = shutil.which("cargo")
-            if not cargo:
+            cmd_plan = plan_build_command()
+            if not cmd_plan.tool:
                 msg = "cargo not found on PATH"
                 raise RuntimeError(msg)
-            subprocess.run([cargo, "--version"], check=True, cwd=plan.workspace, stdout=log, stderr=log)  # noqa: S603
-            subprocess.run(  # noqa: S603
-                [cargo, "build", "--release", "--target", "wasm32-wasi"],
-                check=True,
-                cwd=plan.workspace,
-                stdout=log,
-                stderr=log,
-            )
+
+            # Log versions
+            subprocess.run([cmd_plan.tool, "--version"], check=True, cwd=plan.workspace, stdout=log, stderr=log)  # noqa: S603
+            # Run build
+            subprocess.run([cmd_plan.tool, *cmd_plan.args], check=True, cwd=plan.workspace, stdout=log, stderr=log)  # noqa: S603
         # Heuristic: find a .wasm under target directory
         for p in (plan.workspace / "target").rglob("*.wasm"):
             wasm_out = p
@@ -80,6 +99,31 @@ def build_component(*, wit_source: str, rust_source: str | None, dry_run: bool =
                 logs_path=logs_path,
                 error=".wasm not found after build",
             )
+
+        # Validate it's a Component; if not, and wasm-tools is available, wrap core WASM → Component
+        import shutil as _sh
+
+        wasm_tools = _sh.which("wasm-tools")
+        if wasm_tools:
+            try:
+                subprocess.run(  # noqa: S603
+                    [wasm_tools, "component", "wit", str(wasm_out)],
+                    check=True,
+                    cwd=plan.workspace,
+                    capture_output=True,
+                )
+            except subprocess.CalledProcessError:
+                # Attempt wrap
+                comp_out = wasm_out.with_suffix(".component.wasm")
+                with logs_path.open("a") as log:
+                    log.write("\n[wrap] core WASM detected, wrapping into Component via wasm-tools component new\n")
+                subprocess.run(  # noqa: S603
+                    [wasm_tools, "component", "new", str(wasm_out), "-o", str(comp_out)],
+                    check=True,
+                    cwd=plan.workspace,
+                )
+                wasm_out = comp_out
+
         return BuildResult(built=True, wasm_path=wasm_out, logs_path=logs_path, error=None)
     except Exception as exc:  # noqa: BLE001
         # Write error if not already; ignore secondary failures.

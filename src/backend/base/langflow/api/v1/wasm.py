@@ -12,6 +12,7 @@ from langflow.api.utils import CurrentActiveUser, DbSession
 from langflow.services.database.models.component_twin.model import ComponentTwin
 from langflow.services.database.models.flow.model import Flow
 from langflow.services.wasm.build import build_component, plan_build
+from langflow.services.wasm.parity import compute_text_similarity
 from langflow.services.wasm.publish import publish_oci
 from langflow.services.wasm.rust_skeleton import encode_crate_files, generate_rust_skeleton
 from langflow.services.wasm.wit_generator import generate_wit
@@ -64,6 +65,27 @@ class PublishResponse(BaseModel):
     planned_args: list[str] | None = None
     success: bool
     error: str | None = None
+
+
+class ParityRequest(BaseModel):
+    twin_id: UUID
+    inputs: dict[str, Any] = Field(default_factory=dict, description="Sample inputs for parity check")
+    expected_text: str | None = Field(
+        default=None,
+        description="Optional expected text output to compare against for basic parity",
+    )
+    threshold_text: float | None = Field(
+        default=None,
+        description="Optional threshold for text similarity pass/fail (default 0.90)",
+        ge=0.0,
+        le=1.0,
+    )
+
+
+class ParityResponse(BaseModel):
+    twin: ComponentTwin
+    metrics: dict[str, float]
+    passes: dict[str, bool] | None = None
 
 
 async def _ensure_flow_access(flow_id: UUID, current_user: CurrentActiveUser, session: DbSession) -> Flow:
@@ -233,3 +255,49 @@ async def publish_twin(
         success=result.success,
         error=result.error,
     )
+
+
+@router.post("/parity", response_model=ParityResponse)
+async def parity_check(
+    payload: ParityRequest,
+    current_user: CurrentActiveUser,
+    session: DbSession,
+) -> ParityResponse:
+    twin = await session.get(ComponentTwin, payload.twin_id)
+    if not twin:
+        raise HTTPException(status_code=404, detail="ComponentTwin not found")
+    await _ensure_flow_access(twin.flow_id, current_user, session)
+
+    # M0 parity: if 'text' present and expected_text provided, compute similarity; else stub
+    metrics: dict[str, float] = {}
+    passes: dict[str, bool] = {}
+    default_threshold = 0.90
+    threshold_text = payload.threshold_text if payload.threshold_text is not None else default_threshold
+
+    if isinstance(payload.inputs, dict) and "text" in payload.inputs:
+        input_text = str(payload.inputs["text"])
+        if payload.expected_text is not None:
+            score = compute_text_similarity(input_text, payload.expected_text)
+            metrics["text"] = score
+            passes["text"] = score >= threshold_text
+        else:
+            metrics["text"] = 1.0
+            passes["text"] = True
+    else:
+        metrics["text"] = 0.0
+        passes["text"] = False
+
+    # Persist a richer shape for parity data
+    stored = twin.parity_metrics or {}
+    stored["text"] = {
+        "score": metrics.get("text", 0.0),
+        "passed": passes.get("text", False),
+        "threshold": threshold_text,
+    }
+    twin.parity_metrics = stored
+    twin.updated_at = datetime.now(timezone.utc)
+    session.add(twin)
+    await session.commit()
+    await session.refresh(twin)
+
+    return ParityResponse(twin=twin, metrics=metrics, passes=passes)
