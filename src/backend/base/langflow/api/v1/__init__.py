@@ -1,5 +1,6 @@
 from langflow.api.v1.api_key import router as api_key_router
 from langflow.api.v1.chat import router as chat_router
+from langflow.api.v1.component_twin import router as component_twin_router
 from langflow.api.v1.endpoints import router as endpoints_router
 from langflow.api.v1.files import router as files_router
 from langflow.api.v1.flows import router as flows_router
@@ -10,6 +11,7 @@ from langflow.api.v1.mcp import router as mcp_router
 from langflow.api.v1.mcp_projects import router as mcp_projects_router
 from langflow.api.v1.monitor import router as monitor_router
 from langflow.api.v1.openai_responses import router as openai_responses_router
+from langflow.api.v1.preflight import router as preflight_router
 from langflow.api.v1.projects import router as projects_router
 from langflow.api.v1.starter_projects import router as starter_projects_router
 from langflow.api.v1.store import router as store_router
@@ -17,10 +19,12 @@ from langflow.api.v1.users import router as users_router
 from langflow.api.v1.validate import router as validate_router
 from langflow.api.v1.variable import router as variables_router
 from langflow.api.v1.voice_mode import router as voice_mode_router
+from langflow.api.v1.wasmcloud import router as wasmcloud_router
 
 __all__ = [
     "api_key_router",
     "chat_router",
+    "component_twin_router",
     "endpoints_router",
     "files_router",
     "flows_router",
@@ -31,6 +35,7 @@ __all__ = [
     "mcp_router",
     "monitor_router",
     "openai_responses_router",
+    "preflight_router",
     "projects_router",
     "starter_projects_router",
     "store_router",
@@ -38,4 +43,5 @@ __all__ = [
     "validate_router",
     "variables_router",
     "voice_mode_router",
+    "wasmcloud_router",
 ]

@@ -18,7 +18,6 @@ from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from langflow.initial_setup.constants import STARTER_FOLDER_NAME
-from langflow.main import create_app
 from langflow.services.auth.utils import get_password_hash
 from langflow.services.database.models.api_key.model import ApiKey
 from langflow.services.database.models.flow.model import Flow, FlowCreate
@@ -189,6 +188,9 @@ async def _delete_transactions_and_vertex_builds(session, flows: list[Flow]):
 
 @pytest.fixture
 async def async_client() -> AsyncGenerator:
+    # Lazy import to avoid importing API stack when not needed
+    from langflow.main import create_app  # local import
+
     app = create_app()
     async with AsyncClient(app=app, base_url="http://testserver", http2=True) as client:
         yield client
@@ -266,6 +268,9 @@ def distributed_client_fixture(
 
         # def get_session_override():
         #     return session
+
+        # Lazy import to avoid importing API stack when not needed
+        from langflow.main import create_app  # local import
 
         app = create_app()
 
@@ -413,6 +418,9 @@ async def client_fixture(
 
             get_service_manager().factories.clear()
             get_service_manager().services.clear()  # Clear the services cache
+            # Lazy import to avoid importing API stack when not needed
+            from langflow.main import create_app  # local import
+
             app = create_app()
             db_service = get_db_service()
             db_service.database_url = f"sqlite:///{db_path}"

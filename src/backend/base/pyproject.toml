@@ -91,6 +91,7 @@ dependencies = [
     "langchain-ibm>=0.3.8",
     "trustcall>=0.0.38",
     "langchain-chroma>=0.1.4",
+    "wasmtime>=20.0.0,<30.0.0",
 ]
 
 [dependency-groups]
@@ -253,6 +254,9 @@ all = [
     "llama-cpp-python>=0.2.0",
     "sentence-transformers>=2.0.0",
     "ctransformers>=0.2"
+]
+wasmcloud = [
+    "nats-py>=2.7.0"
 ]
 
 [project.scripts]

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 from cryptography.fernet import InvalidToken
 from langchain_chroma import Chroma
+from langflow.services.knowledge.factory import create_knowledge_client
 from langflow.services.auth.utils import decrypt_api_key, encrypt_api_key
 from langflow.services.database.models.user.crud import get_user_by_id
 
@@ -381,23 +382,47 @@ class KnowledgeIngestionComponent(Component):
             # Convert DataFrame to Data objects (following Local DB pattern)
             data_objects = await self._convert_df_to_data_objects(df_source, config_list)
 
-            # Create vector store
-            chroma = Chroma(
-                persist_directory=str(vector_store_dir),
-                embedding_function=embedding_function,
-                collection_name=self.knowledge_base,
-            )
+            # If using LanceDB backend, index via OpenSearch-compatible client
+            if getattr(get_settings_service().settings, "knowledge_backend", "lancedb") == "lancedb":
+                client = create_knowledge_client()
+                client.put_index(self.knowledge_base)
+                # Embed document contents in one batch
+                texts = [d.to_lc_document().page_content for d in data_objects]
+                vectors = embedding_function.embed_documents(texts) if texts else []
+                import json as _json
+                lines = []
+                for data_obj, vec in zip(data_objects, vectors):
+                    doc = data_obj.to_lc_document()
+                    metadata = dict(doc.metadata or {})
+                    payload = {
+                        "id": metadata.get("_id"),
+                        "vector": vec,
+                        "text": doc.page_content,
+                        "metadata": {k: v for k, v in metadata.items() if k != "_id"},
+                    }
+                    lines.append(_json.dumps({"index": {"_index": self.knowledge_base, "_id": payload["id"]}}))
+                    lines.append(_json.dumps(payload))
+                if lines:
+                    client.bulk(ndjson=lines)
+                    self.log(f"Added {len(lines)//2} documents to LanceDB index '{self.knowledge_base}'")
+            else:
+                # Create vector store (Chroma)
+                chroma = Chroma(
+                    persist_directory=str(vector_store_dir),
+                    embedding_function=embedding_function,
+                    collection_name=self.knowledge_base,
+                )
 
-            # Convert Data objects to LangChain Documents
-            documents = []
-            for data_obj in data_objects:
-                doc = data_obj.to_lc_document()
-                documents.append(doc)
+                # Convert Data objects to LangChain Documents
+                documents = []
+                for data_obj in data_objects:
+                    doc = data_obj.to_lc_document()
+                    documents.append(doc)
 
-            # Add documents to vector store
-            if documents:
-                chroma.add_documents(documents)
-                self.log(f"Added {len(documents)} documents to vector store '{self.knowledge_base}'")
+                # Add documents to vector store
+                if documents:
+                    chroma.add_documents(documents)
+                    self.log(f"Added {len(documents)} documents to vector store '{self.knowledge_base}'")
 
         except (OSError, ValueError, RuntimeError) as e:
             self.log(f"Error creating vector store: {e}")

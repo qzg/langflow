@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from langflow.services.telemetry.service import TelemetryService
     from langflow.services.tracing.service import TracingService
     from langflow.services.variable.service import VariableService
+    from langflow.services.wasm.service import WasmService
 
 
 def get_service(service_type: ServiceType, default=None):
@@ -241,3 +242,17 @@ def get_queue_service() -> JobQueueService:
     from langflow.services.job_queue.factory import JobQueueServiceFactory
 
     return get_service(ServiceType.JOB_QUEUE_SERVICE, JobQueueServiceFactory())
+
+
+def get_wasm_service() -> WasmService:
+    """Retrieve the WasmService instance from the service manager."""
+    from langflow.services.wasm.factory import WasmServiceFactory
+
+    return get_service(ServiceType.WASM_SERVICE, WasmServiceFactory())
+
+
+def get_wasmcloud_service():
+    """Retrieve the WasmCloudService instance from the service manager."""
+    from langflow.services.wasmcloud.factory import WasmCloudServiceFactory
+
+    return get_service(ServiceType.WASMCLOUD_SERVICE, WasmCloudServiceFactory())

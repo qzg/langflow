@@ -4,6 +4,7 @@ from typing import Any
 
 from cryptography.fernet import InvalidToken
 from langchain_chroma import Chroma
+from langflow.services.knowledge.factory import create_knowledge_client
 from langflow.services.auth.utils import decrypt_api_key
 from langflow.services.database.models.user.crud import get_user_by_id
 from pydantic import SecretStr
@@ -196,29 +197,53 @@ class KnowledgeRetrievalComponent(Component):
         # Build the embedder for the knowledge base
         embedding_function = self._build_embeddings(metadata)
 
-        # Load vector store
-        chroma = Chroma(
-            persist_directory=str(kb_path),
-            embedding_function=embedding_function,
-            collection_name=self.knowledge_base,
-        )
-
-        # If a search query is provided, perform a similarity search
-        if self.search_query:
-            # Use the search query to perform a similarity search
-            logger.info(f"Performing similarity search with query: {self.search_query}")
-            results = chroma.similarity_search_with_score(
-                query=self.search_query or "",
-                k=self.top_k,
-            )
+        # If LanceDB backend is enabled, query via OpenSearch-compatible client
+        if getattr(get_settings_service().settings, "knowledge_backend", "lancedb") == "lancedb":
+            client = create_knowledge_client()
+            # Embed the query
+            query_vec = embedding_function.embed_query(self.search_query or "")
+            body = {
+                "size": int(self.top_k or 5),
+                "knn": {"field": "vector", "query_vector": query_vec, "k": int(self.top_k or 5)},
+                "query": {"bool": {}},
+            }
+            resp = client.search(self.knowledge_base, body=body)
+            hits = resp.get("hits", {}).get("hits", [])
+            # Normalize to (doc, score) pairs
+            results = []
+            for h in hits:
+                src = h.get("_source", {})
+                content = src.get("text") or src.get("content") or ""
+                meta = {k: v for k, v in src.items() if k not in {"text", "content"}}
+                # Build a pseudo Document-like structure using Data
+                data = Data(data={"content": content, **meta})
+                # Convert to LangChain Document for uniform downstream handling
+                lc_doc = data.to_lc_document()
+                results.append((lc_doc, h.get("_score", 0.0)))
         else:
-            results = chroma.similarity_search(
-                query=self.search_query or "",
-                k=self.top_k,
+            # Load vector store (Chroma)
+            chroma = Chroma(
+                persist_directory=str(kb_path),
+                embedding_function=embedding_function,
+                collection_name=self.knowledge_base,
             )
 
-            # For each result, make it a tuple to match the expected output format
-            results = [(doc, 0) for doc in results]  # Assign a dummy score of 0
+            # If a search query is provided, perform a similarity search
+            if self.search_query:
+                # Use the search query to perform a similarity search
+                logger.info(f"Performing similarity search with query: {self.search_query}")
+                results = chroma.similarity_search_with_score(
+                    query=self.search_query or "",
+                    k=self.top_k,
+                )
+            else:
+                results = chroma.similarity_search(
+                    query=self.search_query or "",
+                    k=self.top_k,
+                )
+
+                # For each result, make it a tuple to match the expected output format
+                results = [(doc, 0) for doc in results]  # Assign a dummy score of 0
 
         # If include_embeddings is enabled, get embeddings for the results
         id_to_embedding = {}
