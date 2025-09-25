@@ -12,6 +12,7 @@ from langflow.api.utils import CurrentActiveUser, DbSession
 from langflow.services.database.models.component_twin.model import ComponentTwin
 from langflow.services.database.models.flow.model import Flow
 from langflow.services.wasm.build import build_component, plan_build
+from langflow.services.wasm.publish import publish_oci
 from langflow.services.wasm.rust_skeleton import encode_crate_files, generate_rust_skeleton
 from langflow.services.wasm.wit_generator import generate_wit
 
@@ -50,6 +51,19 @@ class BuildResponse(BaseModel):
     twin: ComponentTwin
     workspace: str | None = Field(None, description="Path of the temp workspace when dry_run=true")
     logs_uri: str | None = None
+
+
+class PublishRequest(BaseModel):
+    twin_id: UUID
+    oci_ref: str = Field(..., description="OCI reference, e.g., ghcr.io/org/name:tag")
+    dry_run: bool = Field(default=False, description="Plan only; do not execute push")
+
+
+class PublishResponse(BaseModel):
+    planned_tool: str | None = None
+    planned_args: list[str] | None = None
+    success: bool
+    error: str | None = None
 
 
 async def _ensure_flow_access(flow_id: UUID, current_user: CurrentActiveUser, session: DbSession) -> Flow:
@@ -194,3 +208,28 @@ async def build_twin(
     await session.refresh(twin)
 
     return BuildResponse(twin=twin, workspace=None, logs_uri=twin.build_logs_uri)
+
+
+@router.post("/publish", response_model=PublishResponse)
+async def publish_twin(
+    payload: PublishRequest,
+    current_user: CurrentActiveUser,
+    session: DbSession,
+) -> PublishResponse:
+    twin = await session.get(ComponentTwin, payload.twin_id)
+    if not twin:
+        raise HTTPException(status_code=404, detail="ComponentTwin not found")
+    await _ensure_flow_access(twin.flow_id, current_user, session)
+
+    if not twin.wasm_blob:
+        raise HTTPException(status_code=400, detail="twin has no wasm_blob; build first")
+
+    from pathlib import Path
+
+    plan, result = publish_oci(wasm_path=Path(twin.wasm_blob), oci_ref=payload.oci_ref, dry_run=payload.dry_run)
+    return PublishResponse(
+        planned_tool=plan.tool or None,
+        planned_args=plan.args or None,
+        success=result.success,
+        error=result.error,
+    )
