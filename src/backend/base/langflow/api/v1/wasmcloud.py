@@ -8,9 +8,25 @@ import orjson
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from langflow.services.deps import get_wasmcloud_service
+from langflow.services.deps import get_settings_service, get_wasmcloud_service
 
 router = APIRouter(prefix="/wasmcloud", tags=["WASM/wasmCloud"])
+
+
+class WasmCloudSettingsResponse(BaseModel):
+    wasmcloud_enabled: bool
+    wasmcloud_nats_url: str
+    wasmcloud_lattice: str
+    wasmcloud_timeout_ms: int
+    wasmcloud_creds_path: str | None = None
+
+
+class WasmCloudSettingsUpdate(BaseModel):
+    wasmcloud_enabled: bool | None = None
+    wasmcloud_nats_url: str | None = None
+    wasmcloud_lattice: str | None = None
+    wasmcloud_timeout_ms: int | None = None
+    wasmcloud_creds_path: str | None = None
 
 
 class TestConnectionResponse(BaseModel):
@@ -20,6 +36,30 @@ class TestConnectionResponse(BaseModel):
     latency_ms: float | None = None
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+@router.get("/settings", response_model=WasmCloudSettingsResponse)
+async def get_settings() -> WasmCloudSettingsResponse:
+    svc = get_settings_service()
+    s = svc.settings
+    return WasmCloudSettingsResponse(
+        wasmcloud_enabled=bool(getattr(s, "wasmcloud_enabled", False)),
+        wasmcloud_nats_url=str(getattr(s, "wasmcloud_nats_url", "nats://127.0.0.1:4222")),
+        wasmcloud_lattice=str(getattr(s, "wasmcloud_lattice", "default")),
+        wasmcloud_timeout_ms=int(getattr(s, "wasmcloud_timeout_ms", 30000)),
+        wasmcloud_creds_path=getattr(s, "wasmcloud_creds_path", None),
+    )
+
+
+@router.put("/settings", response_model=WasmCloudSettingsResponse)
+async def set_settings(payload: WasmCloudSettingsUpdate) -> WasmCloudSettingsResponse:
+    svc = get_settings_service()
+    s = svc.settings
+    updates = payload.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(s, key, value)
+    # Return effective values after update
+    return await get_settings()
 
 
 @router.get("/test_connection", response_model=TestConnectionResponse)
