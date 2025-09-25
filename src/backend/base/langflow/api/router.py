@@ -15,6 +15,7 @@ from langflow.api.v1 import (
     mcp_router,
     monitor_router,
     openai_responses_router,
+    preflight_router,
     projects_router,
     starter_projects_router,
     store_router,
@@ -56,6 +57,7 @@ router_v1.include_router(mcp_projects_router)
 router_v1.include_router(openai_responses_router)
 router_v1.include_router(wasmcloud_router)
 router_v1.include_router(component_twin_router)
+router_v1.include_router(preflight_router)
 
 router_v2.include_router(files_router_v2)
 router_v2.include_router(mcp_router_v2)

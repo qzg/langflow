@@ -13,6 +13,7 @@ import {
   useUpdateUser,
 } from "@/controllers/API/queries/auth";
 import { useGetProfilePicturesQuery } from "@/controllers/API/queries/files";
+import { useGetPreflightQuery } from "@/controllers/API/queries/preflight/use-get-preflight";
 import { CustomTermsLinks } from "@/customization/components/custom-terms-links";
 import { ENABLE_PROFILE_ICONS } from "@/customization/feature-flags";
 import useAuthStore from "@/stores/authStore";
@@ -137,6 +138,23 @@ export const GeneralPage = () => {
     setInputState((prev) => ({ ...prev, [name]: value }));
   }
 
+  const {
+    data: preflight,
+    isLoading: preflightLoading,
+    error: preflightError,
+    refetch: refetchPreflight,
+  } = useGetPreflightQuery(undefined, { enabled: true });
+
+  const badge = (label: string, ok: boolean) => (
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+        ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+      }`}
+    >
+      {label}
+    </span>
+  );
+
   return (
     <div className="flex h-full w-full flex-col gap-6 overflow-x-hidden">
       <GeneralPageHeaderComponent />
@@ -160,6 +178,75 @@ export const GeneralPage = () => {
             handlePatchPassword={handlePatchPassword}
           />
         )}
+
+        <div className="rounded-md border border-muted-200 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Environment Preflight</h3>
+            <button
+              className="rounded border px-2 py-1 text-xs"
+              onClick={() => refetchPreflight()}
+              disabled={preflightLoading}
+            >
+              {preflightLoading ? "Checking..." : "Recheck"}
+            </button>
+          </div>
+
+          {preflightError && (
+            <div className="text-sm text-red-600">
+              Failed to run preflight checks.
+            </div>
+          )}
+
+          {!preflightError && (
+            <div className="flex flex-col gap-3">
+              <div className="text-sm">
+                Overall:{" "}
+                {badge(
+                  preflight?.ok ? "All good" : "Attention needed",
+                  Boolean(preflight?.ok),
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {preflight?.checks?.map((c) => (
+                  <div
+                    key={c.name}
+                    className="rounded-md border border-muted-200 p-3"
+                  >
+                    <div className="mb-1 flex items-center justify-between">
+                      <div className="text-sm font-medium">{c.name}</div>
+                      <div className="flex gap-2">
+                        {badge("installed", c.installed)}
+                        {c.meets_minimum == null
+                          ? null
+                          : badge("min", c.meets_minimum)}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-700">
+                      {c.version ? `version: ${c.version}` : "version: n/a"}
+                    </div>
+                    {c.note && (
+                      <div className="mt-1 text-xs text-muted-700">
+                        {c.note}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {preflight?.warnings?.length ? (
+                <div className="rounded-md bg-yellow-50 p-3 text-xs text-yellow-900">
+                  <div className="mb-1 font-semibold">Warnings</div>
+                  <ul className="list-disc space-y-1 pl-4">
+                    {preflight.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
 
       <CustomTermsLinks />
