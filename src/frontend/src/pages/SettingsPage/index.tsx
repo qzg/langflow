@@ -49,6 +49,16 @@ export default function SettingsPage(): JSX.Element {
       ),
     },
     {
+      title: "Runtime",
+      href: "/settings/runtime",
+      icon: (
+        <ForwardedIconComponent
+          name="Cpu"
+          className="w-4 flex-shrink-0 justify-start stroke-[1.5]"
+        />
+      ),
+    },
+    {
       title: "Global Variables",
       href: "/settings/global-variables",
       icon: (

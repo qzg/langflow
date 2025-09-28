@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import time
+from contextlib import suppress
 from typing import Any
 
 import orjson
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
-from langflow.services.deps import get_settings_service, get_wasmcloud_service
+from langflow.api.utils import CurrentActiveUser, DbSession
+from langflow.services.deps import (
+    get_settings_service,
+    get_variable_service,
+    get_wasmcloud_service,
+)
+from langflow.services.variable.constants import CREDENTIAL_TYPE, GENERIC_TYPE
 
 router = APIRouter(prefix="/wasmcloud", tags=["WASM/wasmCloud"])
 
@@ -18,7 +26,9 @@ class WasmCloudSettingsResponse(BaseModel):
     wasmcloud_nats_url: str
     wasmcloud_lattice: str
     wasmcloud_timeout_ms: int
+    # Do not echo creds path back; expose presence flag instead
     wasmcloud_creds_path: str | None = None
+    wasmcloud_creds_present: bool | None = None
 
 
 class WasmCloudSettingsUpdate(BaseModel):
@@ -39,27 +49,93 @@ class TestConnectionResponse(BaseModel):
 
 
 @router.get("/settings", response_model=WasmCloudSettingsResponse)
-async def get_settings() -> WasmCloudSettingsResponse:
-    svc = get_settings_service()
-    s = svc.settings
+async def get_settings(current_user: CurrentActiveUser, session: DbSession) -> WasmCloudSettingsResponse:
+    """Return effective wasmCloud settings.
+
+    Reads current SettingsService values and overlays DB variables for the current user if present.
+    Does not return secret values; instead, indicates presence with a boolean.
+    """
+    settings_svc = get_settings_service()
+    var_svc = get_variable_service()
+    s = settings_svc.settings
+
+    # Start from Settings values
+    enabled = bool(getattr(s, "wasmcloud_enabled", False))
+    nats_url = str(getattr(s, "wasmcloud_nats_url", "nats://127.0.0.1:4222"))
+    lattice = str(getattr(s, "wasmcloud_lattice", "default"))
+    timeout_ms = int(getattr(s, "wasmcloud_timeout_ms", 30000))
+    creds_present = False
+
+    # Overlay from DB variables when available
+    with suppress(Exception):
+        # list once to avoid many queries
+        vars_read = await var_svc.get_all(user_id=current_user.id, session=session)
+        m = {v.name: (v.value or "") for v in vars_read}
+        if "wasmcloud_enabled" in m:
+            enabled = m["wasmcloud_enabled"].lower() in {"1", "true", "yes", "on"}
+        if m.get("wasmcloud_nats_url"):
+            nats_url = m["wasmcloud_nats_url"]
+        if m.get("wasmcloud_lattice"):
+            lattice = m["wasmcloud_lattice"]
+        if "wasmcloud_timeout_ms" in m and m["wasmcloud_timeout_ms"].isdigit():
+            timeout_ms = int(m["wasmcloud_timeout_ms"])
+        if "wasmcloud_creds_path" in m:
+            creds_present = True
+
     return WasmCloudSettingsResponse(
-        wasmcloud_enabled=bool(getattr(s, "wasmcloud_enabled", False)),
-        wasmcloud_nats_url=str(getattr(s, "wasmcloud_nats_url", "nats://127.0.0.1:4222")),
-        wasmcloud_lattice=str(getattr(s, "wasmcloud_lattice", "default")),
-        wasmcloud_timeout_ms=int(getattr(s, "wasmcloud_timeout_ms", 30000)),
-        wasmcloud_creds_path=getattr(s, "wasmcloud_creds_path", None),
+        wasmcloud_enabled=enabled,
+        wasmcloud_nats_url=nats_url,
+        wasmcloud_lattice=lattice,
+        wasmcloud_timeout_ms=timeout_ms,
+        wasmcloud_creds_path=None,  # never echo back
+        wasmcloud_creds_present=creds_present,
     )
 
 
 @router.put("/settings", response_model=WasmCloudSettingsResponse)
-async def set_settings(payload: WasmCloudSettingsUpdate) -> WasmCloudSettingsResponse:
-    svc = get_settings_service()
-    s = svc.settings
+async def set_settings(
+    payload: WasmCloudSettingsUpdate,
+    current_user: CurrentActiveUser,
+    session: DbSession,
+) -> WasmCloudSettingsResponse:
+    """Persist wasmCloud settings to DB variables and update in-memory settings for immediate effect."""
+    settings_svc = get_settings_service()
+    var_svc = get_variable_service()
+    s = settings_svc.settings
+
     updates = payload.model_dump(exclude_unset=True)
+
+    # Persist to DB (upsert behavior)
+    existing_names: list[str] = []
+    with suppress(Exception):
+        existing_names = await var_svc.list_variables(user_id=current_user.id, session=session)
+
     for key, value in updates.items():
-        setattr(s, key, value)
+        # normalize to string storage for variables
+        str_value: str
+        if isinstance(value, bool):
+            str_value = "true" if value else "false"
+        else:
+            str_value = str(value) if value is not None else ""
+
+        if key in existing_names:
+            await var_svc.update_variable(current_user.id, key, str_value, session)
+        else:
+            vtype = CREDENTIAL_TYPE if key == "wasmcloud_creds_path" else GENERIC_TYPE
+            await var_svc.create_variable(
+                user_id=current_user.id,
+                name=key,
+                value=str_value,
+                default_fields=[],
+                type_=vtype,
+                session=session,
+            )
+        # Update in-memory settings for immediate effectiveness (non-secret)
+        with suppress(Exception):
+            setattr(s, key, value)
+
     # Return effective values after update
-    return await get_settings()
+    return await get_settings(current_user=current_user, session=session)
 
 
 @router.get("/test_connection", response_model=TestConnectionResponse)
@@ -87,7 +163,8 @@ async def test_connection() -> TestConnectionResponse:
 
     start = time.monotonic()
     try:
-        await svc.connect()
+        # Enforce a 10-second timeout for the probe connect
+        await asyncio.wait_for(svc.connect(), timeout=10.0)
         latency_ms = (time.monotonic() - start) * 1000.0
         # Immediately disconnect for a lightweight probe
         await svc.disconnect()
@@ -97,6 +174,16 @@ async def test_connection() -> TestConnectionResponse:
             connected=True,
             latency_ms=latency_ms,
         )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "configured": True,
+                "available": True,
+                "connected": False,
+                "error": "timeout waiting for NATS connect (10s)",
+            },
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -111,6 +198,7 @@ class InvokeRequest(BaseModel):
     payload_text: str | None = Field(None, description="UTF-8 text payload")
     payload_json: Any | None = Field(None, description="JSON payload; will be encoded as UTF-8 JSON bytes")
     timeout_ms: int | None = Field(None, description="Optional per-call timeout override in milliseconds")
+    lattice: str | None = Field(None, description="Optional lattice override for this call")
 
 
 class InvokeResponse(BaseModel):
@@ -149,7 +237,13 @@ async def invoke(req: InvokeRequest) -> InvokeResponse:
 
     start = time.monotonic()
     try:
-        data = await svc.call_component(req.component_id, req.operation, payload, timeout_ms=req.timeout_ms)
+        data = await svc.call_component(
+            req.component_id,
+            req.operation,
+            payload,
+            timeout_ms=req.timeout_ms,
+            lattice_override=req.lattice,
+        )
         latency_ms = (time.monotonic() - start) * 1000.0
         # Return both b64 and best-effort utf-8
         data_b64 = base64.b64encode(data).decode("ascii")

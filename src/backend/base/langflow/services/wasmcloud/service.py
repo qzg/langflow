@@ -26,7 +26,11 @@ class WasmCloudService(Service):
         self._wrpc = None  # type: ignore[assignment]
         self._connected = False
 
-        # Read settings
+        # Initial read of settings
+        self._reload_settings()
+
+    def _reload_settings(self) -> None:
+        """Reload settings from the SettingsService so runtime updates take effect without restart."""
         settings = get_service(ServiceType.SETTINGS_SERVICE, SettingsServiceFactory()).settings
         self._enabled = bool(getattr(settings, "wasmcloud_enabled", False))
         self._nats_url = getattr(settings, "wasmcloud_nats_url", "nats://127.0.0.1:4222")
@@ -35,10 +39,12 @@ class WasmCloudService(Service):
         self._creds_path = getattr(settings, "wasmcloud_creds_path", None)
 
     def is_configured(self) -> bool:
+        # Ensure we reflect any recent changes
+        self._reload_settings()
         return self._enabled
 
     def is_available(self) -> bool:
-        """Return True if optional deps import and a connection has been attempted."""
+        """Return True if optional deps import is available."""
         try:
             import nats  # noqa: F401
         except ImportError:
@@ -50,6 +56,8 @@ class WasmCloudService(Service):
 
         This is a best-effort connection. Failures will raise at call time.
         """
+        # Always reload settings before attempting to connect
+        self._reload_settings()
         if self._connected:
             return
         try:
@@ -74,13 +82,20 @@ class WasmCloudService(Service):
                 self._connected = False
 
     async def call_component(
-        self, component_id: str, operation: str, payload: bytes, timeout_ms: int | None = None
+        self,
+        component_id: str,
+        operation: str,
+        payload: bytes,
+        timeout_ms: int | None = None,
+        lattice_override: str | None = None,
     ) -> bytes:
         """Call a component operation over wRPC via NATS.
 
         Note: This is a placeholder API surface; the wRPC subject and framing
         will be refined in subsequent iterations.
         """
+        # Reflect latest settings for each call
+        self._reload_settings()
         if not self._enabled:
             msg = "wasmCloud integration is disabled (wasmcloud_enabled=False)"
             raise RuntimeError(msg)
@@ -91,7 +106,8 @@ class WasmCloudService(Service):
             raise RuntimeError(msg)
 
         # Provisional subject shape; to be aligned with wasmCloud conventions
-        subject = f"wrpc.{self._lattice}.{component_id}.{operation}"
+        lattice = lattice_override or self._lattice
+        subject = f"wrpc.{lattice}.{component_id}.{operation}"
         req_timeout = (timeout_ms if timeout_ms is not None else self._timeout_ms) / 1000.0
         msg = await self._nc.request(subject, payload, timeout=req_timeout)
         return msg.data

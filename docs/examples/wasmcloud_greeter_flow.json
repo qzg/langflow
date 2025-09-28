@@ -1,0 +1,114 @@
+{
+  "id": "wasmcloud-greeter-example",
+  "name": "WasmCloud Greeter (Example)",
+  "data": {
+    "nodes": [
+      {
+        "id": "WasmCloudInvoke-1",
+        "type": "genericNode",
+        "position": { "x": 200, "y": 120 },
+        "data": {
+          "type": "WasmCloudInvoke",
+          "node": {
+            "display_name": "WasmCloud Invoke",
+            "description": "Call a wasmCloud component operation via NATS wRPC.",
+            "icon": "Cpu",
+            "metadata": {
+              "module": "lfx.components.tools.wasmcloud_invoke.WasmCloudInvoke"
+            },
+            "template": {
+              "_type": "Component",
+              "component_id": {
+                "type": "str",
+                "name": "component_id",
+                "display_name": "Component ID",
+                "value": "acme.greeter",
+                "required": true,
+                "show": true,
+                "_input_type": "MessageTextInput"
+              },
+              "operation": {
+                "type": "str",
+                "name": "operation",
+                "display_name": "Operation",
+                "value": "process",
+                "required": true,
+                "show": true,
+                "_input_type": "MessageTextInput"
+              },
+              "payload_json": {
+                "type": "dict",
+                "name": "payload_json",
+                "display_name": "Payload (JSON)",
+                "value": { "name": "LangFlow" },
+                "required": false,
+                "show": true,
+                "_input_type": "DictInput"
+              },
+              "payload_text": {
+                "type": "str",
+                "name": "payload_text",
+                "display_name": "Payload (Text)",
+                "value": "",
+                "required": false,
+                "show": true,
+                "_input_type": "MultilineInput"
+              },
+              "timeout_ms": {
+                "type": "int",
+                "name": "timeout_ms",
+                "display_name": "Timeout (ms)",
+                "value": 30000,
+                "required": false,
+                "show": true,
+                "_input_type": "IntInput"
+              },
+              "lattice": {
+                "type": "str",
+                "name": "lattice",
+                "display_name": "Lattice Override",
+                "value": "",
+                "required": false,
+                "show": true,
+                "_input_type": "MessageTextInput"
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "invoke",
+                "types": ["Message"],
+                "selected": "Message"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "ChatOutput-1",
+        "type": "genericNode",
+        "position": { "x": 520, "y": 120 },
+        "data": {
+          "type": "ChatOutput",
+          "node": {
+            "display_name": "Chat Output",
+            "template": { "_type": "Component" },
+            "outputs": []
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-wasm-to-output",
+        "source": "WasmCloudInvoke-1",
+        "target": "ChatOutput-1",
+        "data": {
+          "sourceHandle": { "id": "WasmCloudInvoke-1", "name": "result", "output_types": ["Message"] },
+          "targetHandle": { "id": "ChatOutput-1", "fieldName": "input_value", "type": "str", "inputTypes": ["Message", "Data"] }
+        }
+      }
+    ]
+  }
+}

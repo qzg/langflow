@@ -52,6 +52,12 @@ class BuildResponse(BaseModel):
     twin: ComponentTwin
     workspace: str | None = Field(None, description="Path of the temp workspace when dry_run=true")
     logs_uri: str | None = None
+    planned_tool: str | None = None
+    planned_args: list[str] | None = None
+    digest: str | None = None
+    size: int | None = None
+    validated_component: bool | None = None
+    wrapped: bool | None = None
 
 
 class PublishRequest(BaseModel):
@@ -213,17 +219,55 @@ async def build_twin(
     if not twin.wit_source:
         raise HTTPException(status_code=400, detail="twin has no wit_source; generate WIT first")
 
+    # Begin lifecycle
+    twin.build_status = "building"
+    twin.updated_at = datetime.now(timezone.utc)
+    session.add(twin)
+    await session.commit()
+    await session.refresh(twin)
+
     result = build_component(wit_source=twin.wit_source, rust_source=twin.rust_source, dry_run=payload.dry_run)
 
     if payload.dry_run:
         plan = plan_build(wit_source=twin.wit_source, rust_source=twin.rust_source)
-        return BuildResponse(twin=twin, workspace=str(plan.workspace), logs_uri=None)
+        return BuildResponse(
+            twin=twin,
+            workspace=str(plan.workspace),
+            logs_uri=None,
+            planned_tool=None,
+            planned_args=None,
+        )
 
     # Persist artifacts after real build
     if result.logs_path:
         twin.build_logs_uri = str(result.logs_path)
     if result.wasm_path:
         twin.wasm_blob = str(result.wasm_path)
+
+    # Capability manifest: build provenance and plan
+    manifest = twin.capability_manifest or {}
+    build_meta = manifest.get("build", {})
+    build_meta.update(
+        {
+            "validated_component": result.validated_component,
+            "wrapped": result.wrapped,
+            "plan": {"tool": result.plan_tool, "args": result.plan_args},
+            "tool_versions": result.tool_versions,
+            "logs_uri": twin.build_logs_uri,
+        }
+    )
+    # Artifact metadata
+    art = manifest.get("artifact", {})
+    if result.digest or result.size is not None:
+        if result.digest:
+            art["sha256"] = result.digest
+        if result.size is not None:
+            art["size"] = result.size
+        art["last_built_at"] = datetime.now(timezone.utc).isoformat()
+    manifest["artifact"] = art
+    manifest["build"] = build_meta
+    twin.capability_manifest = manifest
+
     twin.build_status = "built" if result.built else "error"
     twin.updated_at = datetime.now(timezone.utc)
 
@@ -231,7 +275,17 @@ async def build_twin(
     await session.commit()
     await session.refresh(twin)
 
-    return BuildResponse(twin=twin, workspace=None, logs_uri=twin.build_logs_uri)
+    return BuildResponse(
+        twin=twin,
+        workspace=None,
+        logs_uri=twin.build_logs_uri,
+        planned_tool=result.plan_tool,
+        planned_args=result.plan_args,
+        digest=result.digest,
+        size=result.size,
+        validated_component=result.validated_component,
+        wrapped=result.wrapped,
+    )
 
 
 @router.post("/publish", response_model=PublishResponse)
