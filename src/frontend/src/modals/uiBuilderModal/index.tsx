@@ -82,16 +82,80 @@ export default function UiBuilderModal({
     },
   });
 
-  const { mutate: scaffold, isPending: scaffoldPending } = useWorkspaceScaffold(
-    {
-      onSuccess: (_res) => {
-        // after scaffold, attempt to start dev automatically
-        if (workspaceName) {
-          startDev({ name: workspaceName });
-        }
-      },
+  const {
+    mutate: scaffold,
+    mutateAsync: scaffoldAsync,
+    isPending: scaffoldPending,
+  } = useWorkspaceScaffold({
+    onSuccess: (_res) => {
+      // after scaffold, attempt to start dev automatically when using Start Building
+      if (workspaceName) {
+        startDev({ name: workspaceName });
+      }
     },
-  );
+  });
+
+  const { mutateAsync: startDevAsync } = useWorkspaceStart();
+
+  // Build & Preview flow
+  const [buildBusy, setBuildBusy] = useState(false);
+  const [buildStage, setBuildStage] = useState<string | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
+
+  async function waitForUrl(url: string, timeoutMs = 30000, intervalMs = 1000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        // no-cors to avoid CORS errors; resolve means server reachable
+        await fetch(url, { mode: "no-cors" });
+        return true;
+      } catch (_) {
+        // ignore and retry
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return false;
+  }
+
+  async function handleBuildAndPreview() {
+    if (!workspaceName) return;
+    setBuildError(null);
+    setBuildBusy(true);
+    try {
+      setBuildStage("Scaffolding project");
+      await scaffoldAsync({ name: workspaceName });
+
+      setBuildStage("Starting dev server");
+      const url = session.devServerUrl || "http://localhost:5173/";
+      await startDevAsync({ name: workspaceName });
+      setDevServerStatus(nodeId, { running: true, url });
+      statusQuery.refetch();
+
+      setBuildStage("Waiting for dev server");
+      const ready = await waitForUrl(url, 30000, 1000);
+
+      setBuildStage("Opening preview");
+      await new Promise<void>((resolve, reject) =>
+        navigateMut(
+          { url },
+          {
+            onSuccess: () => resolve(),
+            onError: (e: any) => reject(e),
+          },
+        ),
+      );
+
+      if (!ready) {
+        // Even if wait failed, we attempted to open. Surface soft warning.
+        setBuildError("Dev server readiness not confirmed; preview attempted.");
+      }
+    } catch (e: any) {
+      setBuildError(e?.message || "Build & Preview failed");
+    } finally {
+      setBuildStage(null);
+      setBuildBusy(false);
+    }
+  }
 
   const title = useMemo(
     () => `UI Builder${nodeName ? ` — ${nodeName}` : ""}`,
@@ -326,13 +390,37 @@ export default function UiBuilderModal({
                   <Button
                     size="sm"
                     variant="primary"
-                    disabled={!workspaceName || scaffoldPending}
+                    disabled={!workspaceName || scaffoldPending || buildBusy}
                     onClick={() => scaffold({ name: workspaceName })}
                   >
                     {scaffoldPending ? "Scaffolding..." : "Start Building"}
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!workspaceName || buildBusy}
+                    onClick={handleBuildAndPreview}
+                  >
+                    {buildBusy
+                      ? buildStage
+                        ? buildStage
+                        : "Working..."
+                      : "Build & Preview"}
+                  </Button>
                 </div>
               </div>
+              {(buildBusy || buildError) && (
+                <div className="rounded-md bg-muted/40 p-2 text-xs">
+                  {buildBusy && (
+                    <div className="mb-1">{buildStage || "Working..."}</div>
+                  )}
+                  {buildError && (
+                    <div className="text-accent-red-foreground">
+                      {buildError}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <IconComponent name="Folder" className="h-4 w-4" />
                 <span className="font-medium">Workspace</span>
@@ -352,7 +440,7 @@ export default function UiBuilderModal({
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={!workspaceName || startPending}
+                    disabled={!workspaceName || startPending || buildBusy}
                     onClick={() => startDev({ name: workspaceName })}
                   >
                     {startPending ? "Starting..." : "Start Dev"}
@@ -360,7 +448,7 @@ export default function UiBuilderModal({
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={!workspaceName || stopPending}
+                    disabled={!workspaceName || stopPending || buildBusy}
                     onClick={() => stopDev({ name: workspaceName })}
                   >
                     {stopPending ? "Stopping..." : "Stop Dev"}
