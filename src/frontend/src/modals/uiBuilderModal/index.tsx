@@ -23,6 +23,7 @@ import { useWorkspaceScaffold } from "@/controllers/API/queries/workspace/use-wo
 import { useWorkspaceStart } from "@/controllers/API/queries/workspace/use-workspace-start";
 import { useWorkspaceStop } from "@/controllers/API/queries/workspace/use-workspace-stop";
 import { useDevSettingsStore } from "@/stores/devSettingsStore";
+import { useUiBuilderStore } from "@/stores/uiBuilderStore";
 
 export default function UiBuilderModal({
   open,
