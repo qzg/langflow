@@ -19,10 +19,10 @@ import {
 import { useDevtoolsNavigate } from "@/controllers/API/queries/devtools/use-devtools-navigate";
 import { useDevtoolsPages } from "@/controllers/API/queries/devtools/use-devtools-pages";
 import { useDevtoolsScreenshot } from "@/controllers/API/queries/devtools/use-devtools-screenshot";
+import { useWorkspaceScaffold } from "@/controllers/API/queries/workspace/use-workspace-scaffold";
 import { useWorkspaceStart } from "@/controllers/API/queries/workspace/use-workspace-start";
 import { useWorkspaceStatus } from "@/controllers/API/queries/workspace/use-workspace-status";
 import { useWorkspaceStop } from "@/controllers/API/queries/workspace/use-workspace-stop";
-import { useUiBuilderStore } from "@/stores/uiBuilderStore";
 
 export default function UiBuilderModal({
   open,
@@ -81,6 +81,17 @@ export default function UiBuilderModal({
       statusQuery.refetch();
     },
   });
+
+  const { mutate: scaffold, isPending: scaffoldPending } = useWorkspaceScaffold(
+    {
+      onSuccess: (_res) => {
+        // after scaffold, attempt to start dev automatically
+        if (workspaceName) {
+          startDev({ name: workspaceName });
+        }
+      },
+    },
+  );
 
   const title = useMemo(
     () => `UI Builder${nodeName ? ` — ${nodeName}` : ""}`,
@@ -306,6 +317,22 @@ export default function UiBuilderModal({
 
             {/* Workspace */}
             <div className="rounded-lg border p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IconComponent name="Folder" className="h-4 w-4" />
+                  <span className="font-medium">Workspace</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!workspaceName || scaffoldPending}
+                    onClick={() => scaffold({ name: workspaceName })}
+                  >
+                    {scaffoldPending ? "Scaffolding..." : "Start Building"}
+                  </Button>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <IconComponent name="Folder" className="h-4 w-4" />
                 <span className="font-medium">Workspace</span>

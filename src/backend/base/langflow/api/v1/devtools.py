@@ -93,9 +93,9 @@ async def navigate(
 
 @router.get("/pages", response_model=PagesResponse)
 async def list_pages(
-    server_name: Annotated[str, Query(default="chrome-devtools")],
     current_user: Annotated[CurrentActiveUser, Depends()],
     session: Annotated[DbSession, Depends()],
+    server_name: Annotated[str, Query()] = "chrome-devtools",
 ):
     cfg = await _get_server_config_or_default(server_name, current_user, session)
     client = await _connect_client(cfg, user_context=f"devtools:{current_user.id}")
