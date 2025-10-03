@@ -21,8 +21,8 @@ import { useDevtoolsPages } from "@/controllers/API/queries/devtools/use-devtool
 import { useDevtoolsScreenshot } from "@/controllers/API/queries/devtools/use-devtools-screenshot";
 import { useWorkspaceScaffold } from "@/controllers/API/queries/workspace/use-workspace-scaffold";
 import { useWorkspaceStart } from "@/controllers/API/queries/workspace/use-workspace-start";
-import { useWorkspaceStatus } from "@/controllers/API/queries/workspace/use-workspace-status";
 import { useWorkspaceStop } from "@/controllers/API/queries/workspace/use-workspace-stop";
+import { useDevSettingsStore } from "@/stores/devSettingsStore";
 
 export default function UiBuilderModal({
   open,
@@ -47,7 +47,8 @@ export default function UiBuilderModal({
   const session = getSession(nodeId);
 
   // DevTools MCP browser state
-  const [browserUrl, setBrowserUrl] = useState("http://localhost:5173/");
+  const defaultDevUrl = useDevSettingsStore((s) => s.defaultDevUrl);
+  const [browserUrl, setBrowserUrl] = useState(defaultDevUrl);
   const [lastScreenshotPath, setLastScreenshotPath] = useState<string | null>(
     null,
   );
@@ -126,7 +127,7 @@ export default function UiBuilderModal({
       await scaffoldAsync({ name: workspaceName });
 
       setBuildStage("Starting dev server");
-      const url = session.devServerUrl || "http://localhost:5173/";
+      const url = session.devServerUrl || defaultDevUrl;
       await startDevAsync({ name: workspaceName });
       setDevServerStatus(nodeId, { running: true, url });
       statusQuery.refetch();
@@ -365,9 +366,7 @@ export default function UiBuilderModal({
                       }
                       onClick={() => {
                         const url =
-                          session.devServerUrl ||
-                          browserUrl ||
-                          "http://localhost:5173/";
+                          session.devServerUrl || browserUrl || defaultDevUrl;
                         setBrowserUrl(url);
                         navigateMut({ url });
                       }}
