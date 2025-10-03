@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import platform
+import plistlib
 import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import anyio
@@ -105,9 +107,51 @@ def _check_command(cmd: CommandCheck) -> CheckResult:
     )
 
 
+def _detect_chrome_on_macos() -> tuple[bool, str | None, str | None]:
+    """Detect Chrome (Stable) on macOS and return (installed, version, path)."""
+    try:
+        app_path = Path("/Applications/Google Chrome.app/Contents/Info.plist")
+        if app_path.exists():
+            with app_path.open("rb") as f:
+                info = plistlib.load(f)
+                version = info.get("CFBundleShortVersionString")
+                return True, str(version), str(app_path)
+    except Exception:  # noqa: BLE001
+        return False, None, None
+    return False, None, None
+
+
+def _detect_chrome_generic() -> tuple[bool, str | None, str | None]:
+    """Best-effort detection of Chrome/Chromium on non-macOS systems."""
+    candidates = [
+        "google-chrome",
+        "chrome",
+        "chromium",
+        "chromium-browser",
+    ]
+    for bin_name in candidates:
+        path = shutil.which(bin_name)
+        if not path:
+            continue
+        try:
+            completed = subprocess.run(  # noqa: S603
+                [path, "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+            )
+        except Exception:  # noqa: S112, BLE001
+            continue
+        else:
+            version = _parse_version(completed.stdout or "")
+            return True, version, path
+    return False, None, None
+
+
 async def _run_checks() -> PreflightResponse:
     commands: list[CommandCheck] = [
-        CommandCheck(name="node", cmd="node", version_args=["-v"], min_version="18.0.0"),
+        CommandCheck(name="node", cmd="node", version_args=["-v"], min_version="20.19.0"),
         CommandCheck(name="npm", cmd="npm", version_args=["-v"], min_version="9.0.0"),
         CommandCheck(name="npx", cmd="npx", version_args=["-v"], min_version=None),
         CommandCheck(name="playwright", cmd="playwright", version_args=["--version"], min_version="1.40.0"),
@@ -117,6 +161,68 @@ async def _run_checks() -> PreflightResponse:
 
     # Run in a worker thread to avoid blocking the event loop
     results = await anyio.to_thread.run_sync(lambda: [_check_command(c) for c in commands])
+
+    # Chrome detection (best-effort)
+    if platform.system() == "Darwin":
+        installed, version, path = _detect_chrome_on_macos()
+    else:
+        installed, version, path = _detect_chrome_generic()
+    results.append(
+        CheckResult(
+            name="chrome",
+            installed=installed,
+            version=version,
+            path=path,
+            meets_minimum=None,
+            minimum_required=None,
+            note=None if installed else "Chrome not found. Stable Chrome is recommended for DevTools MCP.",
+        )
+    )
+
+    # Smoke-check Chrome DevTools MCP server availability via npx (network dependent)
+    mcp_ok = False
+    mcp_version: str | None = None
+    mcp_note: str | None = None
+    npx_path = shutil.which("npx")
+    if npx_path:
+
+        def _run_mcp_help():
+            return subprocess.run(  # noqa: S603
+                [npx_path, "-y", "chrome-devtools-mcp@latest", "--help"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                timeout=15,
+            )
+
+        try:
+            completed = await anyio.to_thread.run_sync(_run_mcp_help)
+            out = completed.stdout or ""
+            mcp_ok = completed.returncode == 0 or "chrome-devtools-mcp" in out
+            # Try to parse version if present in help banner
+            m = re.search(r"chrome-devtools-mcp\D+(v?\d+(?:\.\d+){0,3})", out)
+            if m:
+                mcp_version = m.group(1)
+            if not mcp_ok:
+                mcp_note = "Unable to run 'npx chrome-devtools-mcp@latest --help'. Check network and npm auth."
+        except Exception as exc:  # noqa: BLE001
+            mcp_ok = False
+            mcp_note = f"MCP help check failed: {exc}"
+    else:
+        mcp_note = "npx not found; cannot verify chrome-devtools-mcp."
+
+    results.append(
+        CheckResult(
+            name="chrome-devtools-mcp",
+            installed=mcp_ok,
+            version=mcp_version,
+            path=None,
+            meets_minimum=None,
+            minimum_required=None,
+            note=mcp_note,
+        )
+    )
 
     missing = [r.name for r in results if not r.installed]
     warnings: list[str] = []

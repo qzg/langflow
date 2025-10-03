@@ -9,12 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select-custom";
+import { useDevtoolsNavigate } from "@/controllers/API/queries/devtools/use-devtools-navigate";
+import { useDevtoolsPages } from "@/controllers/API/queries/devtools/use-devtools-pages";
+import { useDevtoolsScreenshot } from "@/controllers/API/queries/devtools/use-devtools-screenshot";
 import { useUiBuilderStore } from "@/stores/uiBuilderStore";
 
 export default function UiBuilderModal({
@@ -38,6 +42,16 @@ export default function UiBuilderModal({
     setPreflight,
   } = useUiBuilderStore();
   const session = getSession(nodeId);
+
+  // DevTools MCP browser state
+  const [browserUrl, setBrowserUrl] = useState("http://localhost:5173/");
+  const [lastScreenshotPath, setLastScreenshotPath] = useState<string | null>(
+    null,
+  );
+  const pagesQuery = useDevtoolsPages({ server_name: "chrome-devtools" });
+  const { mutate: navigateMut, isPending: navPending } = useDevtoolsNavigate();
+  const { mutate: screenshotMut, isPending: shotPending } =
+    useDevtoolsScreenshot();
 
   const title = useMemo(
     () => `UI Builder${nodeName ? ` — ${nodeName}` : ""}`,
@@ -91,6 +105,88 @@ export default function UiBuilderModal({
 
           {/* Controls and settings */}
           <div className="col-span-12 md:col-span-5 flex flex-col gap-3">
+            {/* Browser (MCP) */}
+            <div className="rounded-lg border p-3 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IconComponent name="Globe" className="h-4 w-4" />
+                  <span>Browser (MCP)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Server:</span>
+                  <code>chrome-devtools</code>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={browserUrl}
+                  onChange={(e) => setBrowserUrl(e.target.value)}
+                  placeholder="Enter URL"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={navPending}
+                  onClick={() => navigateMut({ url: browserUrl })}
+                >
+                  {navPending ? "Navigating..." : "Navigate"}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => pagesQuery.refetch()}
+                  disabled={pagesQuery.isLoading}
+                >
+                  {pagesQuery.isLoading ? "Listing..." : "List Pages"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={shotPending}
+                  onClick={() =>
+                    screenshotMut(
+                      {
+                        fullPage: true,
+                        workspace: session.workspacePath || undefined,
+                      },
+                      {
+                        onSuccess: (res) => {
+                          if (res.saved && res.path)
+                            setLastScreenshotPath(res.path);
+                        },
+                      },
+                    )
+                  }
+                >
+                  {shotPending ? "Capturing..." : "Full Screenshot"}
+                </Button>
+                {lastScreenshotPath && (
+                  <a
+                    className="text-xs underline"
+                    href={`file://${lastScreenshotPath}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={lastScreenshotPath}
+                  >
+                    Open last screenshot
+                  </a>
+                )}
+              </div>
+              {pagesQuery.data?.pages?.length ? (
+                <div className="rounded-md bg-muted/40 p-2 text-xs">
+                  <div className="mb-1 font-medium">Pages</div>
+                  <ul className="list-disc space-y-1 pl-4">
+                    {pagesQuery.data.pages.map((p, i) => (
+                      <li key={i} className="truncate">
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
             {/* Voice toggle */}
             <div className="rounded-lg border p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
