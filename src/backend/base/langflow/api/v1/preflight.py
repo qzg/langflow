@@ -74,7 +74,9 @@ def _check_command(cmd: CommandCheck) -> CheckResult:
     version: str | None = None
     meets_minimum: bool | None = None
 
-    if installed:
+    # Only attempt to run the binary for version when we have explicit version args.
+    # Some CLIs (e.g., warp) do not provide a stable --version and should not be invoked.
+    if installed and cmd.version_args:
         try:
             completed = subprocess.run(  # noqa: S603
                 [cmd.cmd, *cmd.version_args],
@@ -154,9 +156,10 @@ async def _run_checks() -> PreflightResponse:
         CommandCheck(name="node", cmd="node", version_args=["-v"], min_version="20.19.0"),
         CommandCheck(name="npm", cmd="npm", version_args=["-v"], min_version="9.0.0"),
         CommandCheck(name="npx", cmd="npx", version_args=["-v"], min_version=None),
-        CommandCheck(name="playwright", cmd="playwright", version_args=["--version"], min_version="1.40.0"),
+        # Removed Playwright: not used in current workflow
         CommandCheck(name="claude", cmd="claude", version_args=["--version"], min_version=None),
-        CommandCheck(name="warp", cmd="warp", version_args=["--version"], min_version=None),
+        # For 'warp', only check presence (no version invocation)
+        CommandCheck(name="warp", cmd="warp", version_args=[], min_version=None),
     ]
 
     # Run in a worker thread to avoid blocking the event loop
