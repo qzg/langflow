@@ -19,6 +19,9 @@ import {
 import { useDevtoolsNavigate } from "@/controllers/API/queries/devtools/use-devtools-navigate";
 import { useDevtoolsPages } from "@/controllers/API/queries/devtools/use-devtools-pages";
 import { useDevtoolsScreenshot } from "@/controllers/API/queries/devtools/use-devtools-screenshot";
+import { useWorkspaceStart } from "@/controllers/API/queries/workspace/use-workspace-start";
+import { useWorkspaceStatus } from "@/controllers/API/queries/workspace/use-workspace-status";
+import { useWorkspaceStop } from "@/controllers/API/queries/workspace/use-workspace-stop";
 import { useUiBuilderStore } from "@/stores/uiBuilderStore";
 
 export default function UiBuilderModal({
@@ -52,6 +55,32 @@ export default function UiBuilderModal({
   const { mutate: navigateMut, isPending: navPending } = useDevtoolsNavigate();
   const { mutate: screenshotMut, isPending: shotPending } =
     useDevtoolsScreenshot();
+
+  // Workspace lifecycle hooks
+  const workspaceName = useMemo(() => {
+    // Convert path-like input to a safe name (last segment)
+    const raw = (session.workspacePath || "").trim();
+    const seg = raw.split("/").filter(Boolean).pop() || "";
+    return seg;
+  }, [session.workspacePath]);
+
+  const statusQuery = useWorkspaceStatus(
+    { name: workspaceName },
+    { enabled: Boolean(workspaceName) },
+  );
+
+  const { mutate: startDev, isPending: startPending } = useWorkspaceStart({
+    onSuccess: (res) => {
+      setDevServerStatus(nodeId, { running: !!res.started });
+      statusQuery.refetch();
+    },
+  });
+  const { mutate: stopDev, isPending: stopPending } = useWorkspaceStop({
+    onSuccess: (res) => {
+      setDevServerStatus(nodeId, { running: false });
+      statusQuery.refetch();
+    },
+  });
 
   const title = useMemo(
     () => `UI Builder${nodeName ? ` — ${nodeName}` : ""}`,
@@ -242,21 +271,33 @@ export default function UiBuilderModal({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {session.devServerRunning ? "Running" : "Stopped"}
+                    {statusQuery.data?.running || session.devServerRunning
+                      ? "Running"
+                      : "Stopped"}
                   </span>
                   <ShadTooltip
                     content={
-                      session.devServerRunning
-                        ? "Open preview"
+                      statusQuery.data?.running || session.devServerRunning
+                        ? "Open Workspace Preview via MCP"
                         : "Dev server not running"
                     }
                   >
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={handleOpenPreview}
+                      disabled={
+                        !(statusQuery.data?.running || session.devServerRunning)
+                      }
+                      onClick={() => {
+                        const url =
+                          session.devServerUrl ||
+                          browserUrl ||
+                          "http://localhost:5173/";
+                        setBrowserUrl(url);
+                        navigateMut({ url });
+                      }}
                     >
-                      Open Preview
+                      Open Workspace Preview
                     </Button>
                   </ShadTooltip>
                 </div>
@@ -277,15 +318,25 @@ export default function UiBuilderModal({
               />
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
-                  Configure the project path where the agent will generate your
-                  UI.
+                  Configure the project path (name). Dev controls require a
+                  valid name.
                 </span>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" disabled>
-                    Start Dev
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!workspaceName || startPending}
+                    onClick={() => startDev({ name: workspaceName })}
+                  >
+                    {startPending ? "Starting..." : "Start Dev"}
                   </Button>
-                  <Button size="sm" variant="secondary" disabled>
-                    Stop Dev
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!workspaceName || stopPending}
+                    onClick={() => stopDev({ name: workspaceName })}
+                  >
+                    {stopPending ? "Stopping..." : "Stop Dev"}
                   </Button>
                 </div>
               </div>
