@@ -21,6 +21,7 @@ import { useDevtoolsPages } from "@/controllers/API/queries/devtools/use-devtool
 import { useDevtoolsScreenshot } from "@/controllers/API/queries/devtools/use-devtools-screenshot";
 import { useWorkspaceScaffold } from "@/controllers/API/queries/workspace/use-workspace-scaffold";
 import { useWorkspaceStart } from "@/controllers/API/queries/workspace/use-workspace-start";
+import { useWorkspaceStatus } from "@/controllers/API/queries/workspace/use-workspace-status";
 import { useWorkspaceStop } from "@/controllers/API/queries/workspace/use-workspace-stop";
 import { useDevSettingsStore } from "@/stores/devSettingsStore";
 import { useUiBuilderStore } from "@/stores/uiBuilderStore";
