@@ -1,6 +1,7 @@
 import { cloneDeep } from "lodash";
 import { useContext, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Input } from "@/components/ui/input";
 import {
   EDIT_PASSWORD_ALERT_LIST,
   EDIT_PASSWORD_ERROR_ALERT,
@@ -17,6 +18,7 @@ import { useGetPreflightQuery } from "@/controllers/API/queries/preflight/use-ge
 import { CustomTermsLinks } from "@/customization/components/custom-terms-links";
 import { ENABLE_PROFILE_ICONS } from "@/customization/feature-flags";
 import useAuthStore from "@/stores/authStore";
+import { useDevSettingsStore } from "@/stores/devSettingsStore";
 import { CONTROL_PATCH_USER_STATE } from "../../../../constants/constants";
 import { AuthContext } from "../../../../contexts/authContext";
 import useAlertStore from "../../../../stores/alertStore";
@@ -29,6 +31,27 @@ import useScrollToElement from "../hooks/use-scroll-to-element";
 import GeneralPageHeaderComponent from "./components/GeneralPageHeader";
 import PasswordFormComponent from "./components/PasswordForm";
 import ProfilePictureFormComponent from "./components/ProfilePictureForm";
+
+function WorkspaceDevServerSettings() {
+  const defaultDevUrl = useDevSettingsStore((s) => s.defaultDevUrl);
+  const setDefaultDevUrl = useDevSettingsStore((s) => s.setDefaultDevUrl);
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm">Default Dev URL</label>
+      <div className="flex items-center gap-2">
+        <Input
+          value={defaultDevUrl}
+          onChange={(e) => setDefaultDevUrl(e.target.value)}
+          placeholder="http://localhost:5173/"
+        />
+      </div>
+      <div className="text-xs text-muted-foreground">
+        Used by the UI Builder for Build & Preview and as a fallback preview
+        URL.
+      </div>
+    </div>
+  );
+}
 
 export const GeneralPage = () => {
   const { scrollId } = useParams();
@@ -246,6 +269,14 @@ export const GeneralPage = () => {
               ) : null}
             </div>
           )}
+        </div>
+
+        {/* Workspace Dev Server Defaults */}
+        <div className="rounded-md border border-muted-200 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Workspace Dev Server</h3>
+          </div>
+          <WorkspaceDevServerSettings />
         </div>
       </div>
 

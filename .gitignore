@@ -284,3 +284,6 @@ news-aggregated.json
 CLAUDE.md
 
 member_servers.json
+
+# UI Builder workspaces (generated code)
+workspaces/

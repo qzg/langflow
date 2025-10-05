@@ -72,6 +72,18 @@ class WorkspaceStopResponse(BaseModel):
     reason: str | None = None
 
 
+class WorkspaceScaffoldRequest(BaseModel):
+    name: str
+    template: str = Field(default="vite-react")  # future extension
+    package_manager: str = Field(default="npm")
+
+
+class WorkspaceScaffoldResponse(BaseModel):
+    name: str
+    scaffolded: bool
+    reason: str | None = None
+
+
 class WorkspaceStatusResponse(BaseModel):
     name: str
     running: bool
@@ -174,3 +186,121 @@ async def stop_dev(req: WorkspaceStopRequest) -> WorkspaceStopResponse:
 async def status_dev(name: Annotated[str, Query(description="Workspace name")]) -> WorkspaceStatusResponse:
     running, proc = await _is_running(name)
     return WorkspaceStatusResponse(name=name, running=running, pid=(proc.pid if proc else None))
+
+
+@router.post("/scaffold", response_model=WorkspaceScaffoldResponse)
+async def scaffold_workspace(req: WorkspaceScaffoldRequest) -> WorkspaceScaffoldResponse:
+    """Scaffold a minimal Vite + React app in the workspace and install deps.
+
+    This writes a minimal package.json, index.html, and src files, then runs `npm install`
+    for react, react-dom and dev dependency vite. The workspace is confined to workspaces root.
+    """
+    if req.package_manager != "npm":
+        return WorkspaceScaffoldResponse(name=req.name, scaffolded=False, reason="Only npm is supported currently")
+
+    path = _workspace_path(req.name)
+    path.mkdir(parents=True, exist_ok=True)
+
+    # Write minimal files (non-destructive if already exist)
+    try:
+        pkg = path / "package.json"
+        if not pkg.exists():
+            pkg.write_text(
+                (
+                    "{\n"
+                    '  "name": "' + req.name + '",\n'
+                    '  "private": true,\n'
+                    '  "version": "0.0.0",\n'
+                    '  "type": "module",\n'
+                    '  "scripts": {\n'
+                    '    "dev": "vite",\n'
+                    '    "build": "vite build",\n'
+                    '    "preview": "vite preview"\n'
+                    "  }\n"
+                    "}\n"
+                ),
+                encoding="utf-8",
+            )
+        index_html = path / "index.html"
+        if not index_html.exists():
+            index_html.write_text(
+                (
+                    "<!doctype html>\n"
+                    "<html>\n"
+                    "  <head>\n"
+                    '    <meta charset="UTF-8" />\n'
+                    '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n'
+                    "    <title>" + req.name + "</title>\n"
+                    "  </head>\n"
+                    "  <body>\n"
+                    '    <div id="root"></div>\n'
+                    '    <script type="module" src="/src/main.jsx"></script>\n'
+                    "  </body>\n"
+                    "</html>\n"
+                ),
+                encoding="utf-8",
+            )
+        src_dir = path / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        main_jsx = src_dir / "main.jsx"
+        if not main_jsx.exists():
+            main_jsx.write_text(
+                (
+                    "import React from 'react'\n"
+                    "import { createRoot } from 'react-dom/client'\n"
+                    "import App from './App.jsx'\n"
+                    "createRoot(document.getElementById('root')).render(<App />)\n"
+                ),
+                encoding="utf-8",
+            )
+        app_jsx = src_dir / "App.jsx"
+        if not app_jsx.exists():
+            app_jsx.write_text(
+                (
+                    "export default function App() {\n"
+                    "  return (\n"
+                    "    <div style={{ fontFamily: 'sans-serif', padding: 24 }}>\n"
+                    "      <h1>" + req.name + "</h1>\n"
+                    "      <p>Welcome to your UI Builder workspace.</p>\n"
+                    "    </div>\n"
+                    "  )\n"
+                    "}\n"
+                ),
+                encoding="utf-8",
+            )
+    except Exception as exc:  # noqa: BLE001
+        return WorkspaceScaffoldResponse(name=req.name, scaffolded=False, reason=f"Failed to write files: {exc}")
+
+    # Install dependencies
+    try:
+        install1 = await asyncio.create_subprocess_exec(
+            "npm",
+            "install",
+            "react@18",
+            "react-dom@18",
+            cwd=str(path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        await install1.wait()
+        if install1.returncode != 0:
+            return WorkspaceScaffoldResponse(name=req.name, scaffolded=False, reason="npm install react failed")
+
+        install2 = await asyncio.create_subprocess_exec(
+            "npm",
+            "install",
+            "-D",
+            "vite@^5",
+            cwd=str(path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        await install2.wait()
+        if install2.returncode != 0:
+            return WorkspaceScaffoldResponse(name=req.name, scaffolded=False, reason="npm install vite failed")
+    except FileNotFoundError:
+        return WorkspaceScaffoldResponse(name=req.name, scaffolded=False, reason="npm not found")
+    except Exception as exc:  # noqa: BLE001
+        return WorkspaceScaffoldResponse(name=req.name, scaffolded=False, reason=f"Install error: {exc}")
+
+    return WorkspaceScaffoldResponse(name=req.name, scaffolded=True)

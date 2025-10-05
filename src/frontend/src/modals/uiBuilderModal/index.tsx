@@ -9,12 +9,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select-custom";
+import { useDevtoolsNavigate } from "@/controllers/API/queries/devtools/use-devtools-navigate";
+import { useDevtoolsPages } from "@/controllers/API/queries/devtools/use-devtools-pages";
+import { useDevtoolsScreenshot } from "@/controllers/API/queries/devtools/use-devtools-screenshot";
+import { useWorkspaceScaffold } from "@/controllers/API/queries/workspace/use-workspace-scaffold";
+import { useWorkspaceStart } from "@/controllers/API/queries/workspace/use-workspace-start";
+import { useWorkspaceStatus } from "@/controllers/API/queries/workspace/use-workspace-status";
+import { useWorkspaceStop } from "@/controllers/API/queries/workspace/use-workspace-stop";
+import { useDevSettingsStore } from "@/stores/devSettingsStore";
 import { useUiBuilderStore } from "@/stores/uiBuilderStore";
 
 export default function UiBuilderModal({
@@ -38,6 +47,118 @@ export default function UiBuilderModal({
     setPreflight,
   } = useUiBuilderStore();
   const session = getSession(nodeId);
+
+  // DevTools MCP browser state
+  const defaultDevUrl = useDevSettingsStore((s) => s.defaultDevUrl);
+  const [browserUrl, setBrowserUrl] = useState(defaultDevUrl);
+  const [lastScreenshotPath, setLastScreenshotPath] = useState<string | null>(
+    null,
+  );
+  const pagesQuery = useDevtoolsPages({ server_name: "chrome-devtools" });
+  const { mutate: navigateMut, isPending: navPending } = useDevtoolsNavigate();
+  const { mutate: screenshotMut, isPending: shotPending } =
+    useDevtoolsScreenshot();
+
+  // Workspace lifecycle hooks
+  const workspaceName = useMemo(() => {
+    // Convert path-like input to a safe name (last segment)
+    const raw = (session.workspacePath || "").trim();
+    const seg = raw.split("/").filter(Boolean).pop() || "";
+    return seg;
+  }, [session.workspacePath]);
+
+  const statusQuery = useWorkspaceStatus(
+    { name: workspaceName },
+    { enabled: Boolean(workspaceName) },
+  );
+
+  const { mutate: startDev, isPending: startPending } = useWorkspaceStart({
+    onSuccess: (res) => {
+      setDevServerStatus(nodeId, { running: !!res.started });
+      statusQuery.refetch();
+    },
+  });
+  const { mutate: stopDev, isPending: stopPending } = useWorkspaceStop({
+    onSuccess: (res) => {
+      setDevServerStatus(nodeId, { running: false });
+      statusQuery.refetch();
+    },
+  });
+
+  const {
+    mutate: scaffold,
+    mutateAsync: scaffoldAsync,
+    isPending: scaffoldPending,
+  } = useWorkspaceScaffold({
+    onSuccess: (_res) => {
+      // after scaffold, attempt to start dev automatically when using Start Building
+      if (workspaceName) {
+        startDev({ name: workspaceName });
+      }
+    },
+  });
+
+  const { mutateAsync: startDevAsync } = useWorkspaceStart();
+
+  // Build & Preview flow
+  const [buildBusy, setBuildBusy] = useState(false);
+  const [buildStage, setBuildStage] = useState<string | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
+
+  async function waitForUrl(url: string, timeoutMs = 30000, intervalMs = 1000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        // no-cors to avoid CORS errors; resolve means server reachable
+        await fetch(url, { mode: "no-cors" });
+        return true;
+      } catch (_) {
+        // ignore and retry
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return false;
+  }
+
+  async function handleBuildAndPreview() {
+    if (!workspaceName) return;
+    setBuildError(null);
+    setBuildBusy(true);
+    try {
+      setBuildStage("Scaffolding project");
+      await scaffoldAsync({ name: workspaceName });
+
+      setBuildStage("Starting dev server");
+      const url = session.devServerUrl || defaultDevUrl;
+      await startDevAsync({ name: workspaceName });
+      setDevServerStatus(nodeId, { running: true, url });
+      statusQuery.refetch();
+
+      setBuildStage("Waiting for dev server");
+      const ready = await waitForUrl(url, 30000, 1000);
+
+      setBuildStage("Opening preview");
+      await new Promise<void>((resolve, reject) =>
+        navigateMut(
+          { url },
+          {
+            onSuccess: () => resolve(),
+            onError: (e: any) => reject(e),
+          },
+        ),
+      );
+
+      if (!ready) {
+        // Even if wait failed, we attempted to open. Surface soft warning.
+        setBuildError("Dev server readiness not confirmed; preview attempted.");
+      }
+    } catch (e: any) {
+      setBuildError(e?.message || "Build & Preview failed");
+    } finally {
+      setBuildStage(null);
+      setBuildBusy(false);
+    }
+  }
 
   const title = useMemo(
     () => `UI Builder${nodeName ? ` — ${nodeName}` : ""}`,
@@ -91,6 +212,88 @@ export default function UiBuilderModal({
 
           {/* Controls and settings */}
           <div className="col-span-12 md:col-span-5 flex flex-col gap-3">
+            {/* Browser (MCP) */}
+            <div className="rounded-lg border p-3 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IconComponent name="Globe" className="h-4 w-4" />
+                  <span>Browser (MCP)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Server:</span>
+                  <code>chrome-devtools</code>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={browserUrl}
+                  onChange={(e) => setBrowserUrl(e.target.value)}
+                  placeholder="Enter URL"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={navPending}
+                  onClick={() => navigateMut({ url: browserUrl })}
+                >
+                  {navPending ? "Navigating..." : "Navigate"}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => pagesQuery.refetch()}
+                  disabled={pagesQuery.isLoading}
+                >
+                  {pagesQuery.isLoading ? "Listing..." : "List Pages"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={shotPending}
+                  onClick={() =>
+                    screenshotMut(
+                      {
+                        fullPage: true,
+                        workspace: session.workspacePath || undefined,
+                      },
+                      {
+                        onSuccess: (res) => {
+                          if (res.saved && res.path)
+                            setLastScreenshotPath(res.path);
+                        },
+                      },
+                    )
+                  }
+                >
+                  {shotPending ? "Capturing..." : "Full Screenshot"}
+                </Button>
+                {lastScreenshotPath && (
+                  <a
+                    className="text-xs underline"
+                    href={`file://${lastScreenshotPath}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={lastScreenshotPath}
+                  >
+                    Open last screenshot
+                  </a>
+                )}
+              </div>
+              {pagesQuery.data?.pages?.length ? (
+                <div className="rounded-md bg-muted/40 p-2 text-xs">
+                  <div className="mb-1 font-medium">Pages</div>
+                  <ul className="list-disc space-y-1 pl-4">
+                    {pagesQuery.data.pages.map((p, i) => (
+                      <li key={i} className="truncate">
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
             {/* Voice toggle */}
             <div className="rounded-lg border p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -146,21 +349,31 @@ export default function UiBuilderModal({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">
-                    {session.devServerRunning ? "Running" : "Stopped"}
+                    {statusQuery.data?.running || session.devServerRunning
+                      ? "Running"
+                      : "Stopped"}
                   </span>
                   <ShadTooltip
                     content={
-                      session.devServerRunning
-                        ? "Open preview"
+                      statusQuery.data?.running || session.devServerRunning
+                        ? "Open Workspace Preview via MCP"
                         : "Dev server not running"
                     }
                   >
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={handleOpenPreview}
+                      disabled={
+                        !(statusQuery.data?.running || session.devServerRunning)
+                      }
+                      onClick={() => {
+                        const url =
+                          session.devServerUrl || browserUrl || defaultDevUrl;
+                        setBrowserUrl(url);
+                        navigateMut({ url });
+                      }}
                     >
-                      Open Preview
+                      Open Workspace Preview
                     </Button>
                   </ShadTooltip>
                 </div>
@@ -169,6 +382,46 @@ export default function UiBuilderModal({
 
             {/* Workspace */}
             <div className="rounded-lg border p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IconComponent name="Folder" className="h-4 w-4" />
+                  <span className="font-medium">Workspace</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!workspaceName || scaffoldPending || buildBusy}
+                    onClick={() => scaffold({ name: workspaceName })}
+                  >
+                    {scaffoldPending ? "Scaffolding..." : "Start Building"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!workspaceName || buildBusy}
+                    onClick={handleBuildAndPreview}
+                  >
+                    {buildBusy
+                      ? buildStage
+                        ? buildStage
+                        : "Working..."
+                      : "Build & Preview"}
+                  </Button>
+                </div>
+              </div>
+              {(buildBusy || buildError) && (
+                <div className="rounded-md bg-muted/40 p-2 text-xs">
+                  {buildBusy && (
+                    <div className="mb-1">{buildStage || "Working..."}</div>
+                  )}
+                  {buildError && (
+                    <div className="text-accent-red-foreground">
+                      {buildError}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <IconComponent name="Folder" className="h-4 w-4" />
                 <span className="font-medium">Workspace</span>
@@ -181,15 +434,25 @@ export default function UiBuilderModal({
               />
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
-                  Configure the project path where the agent will generate your
-                  UI.
+                  Configure the project path (name). Dev controls require a
+                  valid name.
                 </span>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary" disabled>
-                    Start Dev
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!workspaceName || startPending || buildBusy}
+                    onClick={() => startDev({ name: workspaceName })}
+                  >
+                    {startPending ? "Starting..." : "Start Dev"}
                   </Button>
-                  <Button size="sm" variant="secondary" disabled>
-                    Stop Dev
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!workspaceName || stopPending || buildBusy}
+                    onClick={() => stopDev({ name: workspaceName })}
+                  >
+                    {stopPending ? "Stopping..." : "Stop Dev"}
                   </Button>
                 </div>
               </div>
