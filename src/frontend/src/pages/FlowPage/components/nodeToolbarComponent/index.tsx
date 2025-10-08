@@ -12,6 +12,7 @@ import { usePostTemplateValue } from "@/controllers/API/queries/nodes/use-post-t
 import { usePostRetrieveVertexOrder } from "@/controllers/API/queries/vertex";
 import { customOpenNewTab } from "@/customization/utils/custom-open-new-tab";
 import useAddFlow from "@/hooks/flows/use-add-flow";
+import ComponentDeploymentModal from "@/modals/componentDeploymentModal";
 import type { APIClassType } from "@/types/api";
 import IconComponent from "../../../../components/common/genericIconComponent";
 import {
@@ -75,6 +76,7 @@ const NodeToolbarComponent = memo(
     const shortcuts = useShortcutsStore((state) => state.shortcuts);
     const currentFlowId = useFlowsManagerStore((state) => state.currentFlowId);
     const [openModal, setOpenModal] = useState(false);
+    const [openDeployment, setOpenDeployment] = useState(false);
     const frozen = data.node?.frozen ?? false;
     const updateNodeInternals = useUpdateNodeInternals();
 
@@ -340,6 +342,9 @@ const NodeToolbarComponent = memo(
             break;
           case "documentation":
             openDocs();
+            break;
+          case "deploy":
+            setOpenDeployment(true);
             break;
           case "disabled":
             break;
@@ -650,6 +655,13 @@ const NodeToolbarComponent = memo(
                     dataTestId="docs-button-modal"
                   />
                 </SelectItem>
+                <SelectItem value={"deploy"}>
+                  <ToolbarSelectItem
+                    value={"Deployment"}
+                    icon={"SquareStack"}
+                    dataTestId="deploy-button-modal"
+                  />
+                </SelectItem>
                 {(isMinimal || !showNode) && (
                   <SelectItem
                     value={"show"}
@@ -748,6 +760,14 @@ const NodeToolbarComponent = memo(
             addFlow={addFlow}
             name={name}
           />
+          {openDeployment && (
+            <ComponentDeploymentModal
+              open={openDeployment}
+              setOpen={setOpenDeployment}
+              nodeId={data.id}
+              nodeName={data.node?.display_name}
+            />
+          )}
         </div>
       </>
     );

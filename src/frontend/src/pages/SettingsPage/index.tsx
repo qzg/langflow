@@ -49,6 +49,16 @@ export default function SettingsPage(): JSX.Element {
       ),
     },
     {
+      title: "AI Codegen",
+      href: "/settings/ai-codegen",
+      icon: (
+        <ForwardedIconComponent
+          name="Bot"
+          className="w-4 flex-shrink-0 justify-start stroke-[1.5]"
+        />
+      ),
+    },
+    {
       title: "Runtime",
       href: "/settings/runtime",
       icon: (

@@ -14,6 +14,62 @@ def parse_world_name(wit_source: str) -> str:
     return "component"
 
 
+def ensure_interface_wit(wit_source: str) -> str:
+    """Ensure the provided WIT uses an interface for type definitions.
+
+    If the input already contains an 'interface' block, return unchanged.
+    Otherwise, wrap top-level type declarations into 'interface types { ... }'
+    and update the world export to reference types via 'use types.{...}'.
+    This is a best-effort transformation to make older WIT compatible with
+    cargo/wasm-tools expectations.
+    """
+    s = wit_source or ""
+    if "interface" in s:
+        return s
+
+    import re
+
+    # Preserve package header if present
+    pkg_match = re.search(r"(?m)^\s*package\s+([^\n]+)\s*$", s)
+    package_line = (pkg_match.group(0) + "\n") if pkg_match else ""
+    body = re.sub(r"(?m)^\s*package\s+[^\n]+\s*\n", "", s)
+
+    # Find world name
+    world_match = re.search(r"(?m)^\s*world\s+([A-Za-z_][\w]*)\s*\{", body)
+    world_name = world_match.group(1) if world_match else "component"
+
+    # Find export signature
+    exp_match = re.search(
+        r"export\s+([A-Za-z_]\w*)\s*:\s*func\s*\(\s*input\s*:\s*([A-Za-z_]\w*)\s*\)\s*->\s*([A-Za-z_]\w*)",
+        body,
+    )
+    if not exp_match:
+        return s  # unknown layout, leave unchanged
+    func_name, in_ty, out_ty = exp_match.group(1), exp_match.group(2), exp_match.group(3)
+
+    # Extract type blocks for input/output
+    def _type_block(name: str) -> str:
+        m = re.search(rf"(?ms)^\s*type\s+{re.escape(name)}\s*=\s*record\s*\{{.*?\}}\s*", body)
+        return m.group(0).strip() if m else f"type {name} = record {{}}"
+
+    in_block = _type_block(in_ty)
+    out_block = _type_block(out_ty)
+
+    # Compose new WIT with interface wrapper
+    lines: list[str] = []
+    if package_line:
+        lines.append(package_line.strip())
+    lines.append("interface types {")
+    for ln in (in_block + "\n" + out_block).splitlines():
+        lines.append(f"  {ln}")
+    lines.append("}\n")
+    lines.append(f"world {world_name} {{")
+    lines.append(f"  use types.{{{in_ty}, {out_ty}}}")
+    lines.append(f"  export {func_name}: func(input: types.{in_ty}) -> types.{out_ty}")
+    lines.append("}\n")
+    return "\n".join(lines)
+
+
 def generate_rust_skeleton(
     *,
     wit_source: str,
@@ -58,10 +114,13 @@ pub fn {func_ident}_stub() {{
 }}
 """.lstrip()
 
+    # Ensure WIT is interface-wrapped for compatibility
+    wit_fixed = ensure_interface_wit(wit_source)
+
     files: dict[str, str] = {
         "Cargo.toml": cargo_toml,
         "src/lib.rs": lib_rs,
-        "wit/world.wit": wit_source,
+        "wit/world.wit": wit_fixed,
     }
     return files
 

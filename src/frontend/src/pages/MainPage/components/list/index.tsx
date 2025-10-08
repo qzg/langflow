@@ -13,6 +13,7 @@ import {
 import { useCustomNavigate } from "@/customization/hooks/use-custom-navigate";
 import useDeleteFlow from "@/hooks/flows/use-delete-flow";
 import DeleteConfirmationModal from "@/modals/deleteConfirmationModal";
+import DeploymentModal from "@/modals/deploymentModal";
 import ExportModal from "@/modals/exportModal";
 import FlowSettingsModal from "@/modals/flowSettingsModal";
 import useAlertStore from "@/stores/alertStore";
@@ -43,6 +44,7 @@ const ListComponent = ({
   const setErrorData = useAlertStore((state) => state.setErrorData);
   const { folderId } = useParams();
   const [openSettings, setOpenSettings] = useState(false);
+  const [openDeployment, setOpenDeployment] = useState(false);
   const [openExportModal, setOpenExportModal] = useState(false);
   const isComponent = flowData.is_component ?? false;
 
@@ -205,6 +207,7 @@ const ListComponent = ({
                 handleEdit={() => {
                   setOpenSettings(true);
                 }}
+                setOpenDeployment={setOpenDeployment}
               />
             </DropdownMenuContent>
           </DropdownMenu>
@@ -227,6 +230,11 @@ const ListComponent = ({
       <FlowSettingsModal
         open={openSettings}
         setOpen={setOpenSettings}
+        flowData={flowData}
+      />
+      <DeploymentModal
+        open={openDeployment}
+        setOpen={setOpenDeployment}
         flowData={flowData}
       />
     </>

@@ -30,6 +30,7 @@ import HomePage from "./pages/MainPage/pages/homePage";
 import KnowledgePage from "./pages/MainPage/pages/knowledgePage";
 import CollectionPage from "./pages/MainPage/pages/main-page";
 import SettingsPage from "./pages/SettingsPage";
+import AICodegenPage from "./pages/SettingsPage/pages/AICodegenPage";
 import ApiKeysPage from "./pages/SettingsPage/pages/ApiKeysPage";
 import GeneralPage from "./pages/SettingsPage/pages/GeneralPage";
 import GlobalVariablesPage from "./pages/SettingsPage/pages/GlobalVariablesPage";
@@ -142,6 +143,7 @@ const router = createBrowserRouter(
                   />
                   <Route path="mcp-servers" element={<MCPServersPage />} />
                   <Route path="runtime" element={<RuntimePage />} />
+                  <Route path="ai-codegen" element={<AICodegenPage />} />
                   <Route path="api-keys" element={<ApiKeysPage />} />
                   <Route
                     path="general/:scrollId?"

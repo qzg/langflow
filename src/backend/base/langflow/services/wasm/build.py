@@ -59,19 +59,26 @@ def plan_build(*, wit_source: str, rust_source: str | None) -> BuildPlan:
 def plan_build_command() -> BuildCommandPlan:
     """Return the preferred build command plan for producing a Wasm artifact.
 
-    Preference order (M0):
-    1) cargo component build --release (if cargo and cargo-component are on PATH)
-    2) cargo build --release --target wasm32-wasip2 (fallback aligned with Component Model)
+    Temporary preference order to improve robustness:
+    1) cargo build --release --target wasm32-wasip2 (portable core Wasm)
+    2) cargo component build --release (opt-in stricter flow if desired)
     If neither is available, returns tool="" and args=[].
     """
     import shutil
 
     cargo = shutil.which("cargo")
     cargo_component_bin = shutil.which("cargo-component")
-    if cargo and cargo_component_bin:
-        return BuildCommandPlan(tool=cargo, args=["component", "build", "--release"])  # uses cargo subcommand
+
+    # Prefer the portable wasm32-wasip2 target for now to avoid strict component parsing issues
     if cargo:
-        return BuildCommandPlan(tool=cargo, args=["build", "--release", "--target", "wasm32-wasip2"])  # fallback
+        return BuildCommandPlan(
+            tool=cargo, args=["build", "--release", "--target", "wasm32-wasip2"]
+        )  # preferred fallback
+
+    # If cargo were present and cargo-component explicitly desired, it would be used here.
+    if cargo and cargo_component_bin:
+        return BuildCommandPlan(tool=cargo, args=["component", "build", "--release"])  # cargo subcommand
+
     return BuildCommandPlan(tool="", args=[])
 
 

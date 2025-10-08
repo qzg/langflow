@@ -10,6 +10,7 @@ type DropdownComponentProps = {
   setOpenDelete: (open: boolean) => void;
   handleExport: () => void;
   handleEdit: () => void;
+  setOpenDeployment?: (open: boolean) => void;
 };
 
 const DropdownComponent = ({
@@ -17,6 +18,7 @@ const DropdownComponent = ({
   setOpenDelete,
   handleExport,
   handleEdit,
+  setOpenDeployment,
 }: DropdownComponentProps) => {
   const setSuccessData = useAlertStore((state) => state.setSuccessData);
   const setErrorData = useAlertStore((state) => state.setErrorData);
@@ -41,6 +43,21 @@ const DropdownComponent = ({
 
   return (
     <>
+      <DropdownMenuItem
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenDeployment?.(true);
+        }}
+        className="cursor-pointer"
+        data-testid="btn-deployment"
+      >
+        <ForwardedIconComponent
+          name="Cpu"
+          aria-hidden="true"
+          className="mr-2 h-4 w-4"
+        />
+        Deployment
+      </DropdownMenuItem>
       <DropdownMenuItem
         onClick={(e) => {
           e.stopPropagation();

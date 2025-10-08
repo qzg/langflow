@@ -263,6 +263,8 @@ For environment variables for specific monitoring service providers, see the Lan
 | `LANGFLOW_DEV` | Boolean | False | Enable development mode. |
 | `LANGFLOW_DEACTIVATE_TRACING` | Boolean | False | Deactivate tracing functionality. |
 | `LANGFLOW_CELERY_ENABLED` | Boolean | False | Enable Celery for distributed task processing. |
+| `WASM_OCI_BASE` | String | `ghcr.io/ibm/langflow` | Base registry/org[/namespace] for WASM OCI publishes. The UI will append `/{component_slug}:{short_code_hash}` (12-char tag) by default. |
+| `WASM_PARITY_STALE_HOURS` | Integer | `24` | Hours after which parity status is considered stale in the UI. |
 
 ### Public flow settings
 

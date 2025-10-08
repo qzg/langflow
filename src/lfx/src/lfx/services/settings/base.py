@@ -60,6 +60,43 @@ class CustomSource(EnvSettingsSource):
 class Settings(BaseSettings):
     # Define the default LANGFLOW_DIR
     config_dir: str | None = None
+
+    # WASM publishing defaults
+    wasm_oci_base: str = "ghcr.io/ibm/langflow"
+    """Base registry/org[/namespace] for OCI publishes.
+    Example: 'ghcr.io/ibm/langflow'. The UI will append '/{component_slug}:{short_code_hash}'.
+    Override via WASM_OCI_BASE env var.
+    """
+
+    # AI Codegen (CLI agent) settings
+    ai_codegen_enabled: bool = False
+    """Enable AI code generation for Rust component sources. Override via AI_CODEGEN_ENABLED."""
+
+    ai_codegen_cli: str = "warp"
+    """CLI executable to invoke for codegen (e.g., 'warp'). Override via AI_CODEGEN_CLI."""
+
+    ai_codegen_profile: str | None = "j9JE9JgmTTnox3KeKmOQCS"
+    """Agent profile identifier (for Warp, --profile). Override via AI_CODEGEN_PROFILE."""
+
+    ai_codegen_timeout_ms: int = 120000
+    """Max duration for codegen process in milliseconds. Override via AI_CODEGEN_TIMEOUT_MS."""
+
+    ai_codegen_working_dir: str = "repo_root"
+    """Working directory for codegen: 'repo_root' or 'workspace'. Override via AI_CODEGEN_WORKING_DIR."""
+
+    ai_codegen_api_key_env: str | None = None
+    """Optional environment variable name holding the agent API key (e.g., 'WARP_API_KEY').
+    The server will never log or echo the key. Override via AI_CODEGEN_API_KEY_ENV.
+    """
+
+    ai_codegen_max_iters: int = 3
+    """Max AI repair iterations after a failed build. Override via AI_CODEGEN_MAX_ITERS."""
+
+    ai_codegen_auto_build: bool = True
+    """Automatically build after each AI generation attempt. Override via AI_CODEGEN_AUTO_BUILD."""
+
+    wasm_parity_stale_hours: int = 24
+    """Number of hours after which parity is considered stale in the UI. Override via WASM_PARITY_STALE_HOURS."""
     # Define if langflow db should be saved in config dir or
     # in the langflow directory
     save_db_in_config_dir: bool = False

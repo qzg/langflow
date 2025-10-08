@@ -33,6 +33,21 @@ export const URLs = {
   // wasmCloud runtime endpoints
   WASMCLOUD_SETTINGS: `wasmcloud/settings`,
   WASMCLOUD_TEST_CONNECTION: `wasmcloud/test_connection`,
+  // wasm component endpoints
+  WASM_CAPABILITIES: `wasm/capabilities`,
+  WASM_PUBLISH: `wasm/publish`,
+  WASM_PARITY: `wasm/parity`,
+  WASM_SUGGEST_OCI: `wasm/suggest_oci_ref`,
+  WASM_GENERATE_WIT: `wasm/generate_wit`,
+  WASM_GENERATE_RUST: `wasm/generate_rust`,
+  WASM_BUILD: `wasm/build`,
+  WASM_BUILD_START: `wasm/build/start`,
+  WASM_EXECUTE_FLOW: `wasm/execute_flow`,
+  // AI codegen settings and SSE start
+  AI_CODEGEN_SETTINGS: `ai_codegen/settings`,
+  WASM_CODEGEN_START: `wasm/generate_rust/start`,
+  AI_CODEGEN_WORKSPACES: `ai_codegen/workspaces`,
+  COMPONENT_TWINS: `component_twins`,
 } as const;
 
 // IMPORTANT: FOLDERS endpoint now points to 'projects' for backward compatibility

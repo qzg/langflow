@@ -787,6 +787,9 @@ export const AUTHORIZED_DUPLICATE_REQUESTS = [
   "/refresh",
   "/login",
   "/auto_login",
+  "/component_twins",
+  "/wasm/capabilities",
+  "/wasm/suggest_oci_ref",
 ];
 
 export const BROKEN_EDGES_WARNING =

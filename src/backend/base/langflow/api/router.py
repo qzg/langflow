@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from langflow.api.v1 import (
+    ai_codegen_router,
     api_key_router,
     chat_router,
     component_twin_router,
@@ -58,6 +59,7 @@ router_v1.include_router(openai_responses_router)
 router_v1.include_router(wasmcloud_router)
 router_v1.include_router(component_twin_router)
 router_v1.include_router(wasm_router)
+router_v1.include_router(ai_codegen_router)
 
 router_v2.include_router(files_router_v2)
 router_v2.include_router(mcp_router_v2)

@@ -1,3 +1,4 @@
+from langflow.api.v1.ai_codegen import router as ai_codegen_router
 from langflow.api.v1.api_key import router as api_key_router
 from langflow.api.v1.chat import router as chat_router
 from langflow.api.v1.component_twin import router as component_twin_router
@@ -22,6 +23,7 @@ from langflow.api.v1.wasm import router as wasm_router
 from langflow.api.v1.wasmcloud import router as wasmcloud_router
 
 __all__ = [
+    "ai_codegen_router",
     "api_key_router",
     "chat_router",
     "component_twin_router",
